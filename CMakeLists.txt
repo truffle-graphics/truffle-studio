@@ -25,3 +25,6 @@ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 include(StudioDependencies)
 
 add_subdirectory(src)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

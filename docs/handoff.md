@@ -8,10 +8,16 @@ application with workspaces (CAD first) over a shared document; see ADR 0001.
 - #7 product direction: PROJECT_CONTEXT, README and ADR 0001 record the
   workspace model, sketch-based CAD, OpenCASCADE behind `src/kernel`, and the
   Studio-owned constraint solver.
+- #8 document model: `src/model` (no Truffle) has `UndoHistory<State>`
+  (snapshot undo, grouped/nested edits, cancel) and `Document` (state,
+  edit/begin/update/commit, undo/redo, change listeners, id allocation).
+  The app owns one `Document`; toolbar Undo/Redo and Cmd+Z / Shift+Cmd+Z
+  (ignored while a text field is focused) drive it. `tests/` holds a small
+  harness; `ctest --preset strict` runs `studio_unit` and the smoke test.
 
 ## Next
 
-#8 document model and undo, #9 workspace switcher, #10 OpenCASCADE and the
+#9 workspace switcher, #10 OpenCASCADE and the
 kernel, #11 sketch editor, #12 constraint solver, #13 3D viewport, #14
 extrude and regeneration.
 

@@ -1,0 +1,5 @@
+add_executable(studio_tests main.cpp document_tests.cpp)
+target_link_libraries(studio_tests PRIVATE studio_model)
+studio_target_warnings(studio_tests)
+add_test(NAME studio_unit COMMAND studio_tests)
+set_tests_properties(studio_unit PROPERTIES LABELS "unit")

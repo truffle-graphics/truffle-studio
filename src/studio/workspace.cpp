@@ -9,8 +9,9 @@ namespace studio {
 namespace gui = truffle::gui;
 namespace dock = truffle::gui::dock;
 
-Workspace::Workspace(gui::TextEngine& text, gui::FontId font, gui::TextureId atlas)
-    : text_(text), font_(font), atlas_(atlas) {
+Workspace::Workspace(model::Document& document, gui::TextEngine& text, gui::FontId font,
+                     gui::TextureId atlas)
+    : document_(document), text_(text), font_(font), atlas_(atlas) {
     const auto root = context.root();
     need(context.set_layout(root, std::make_shared<gui::StackLayout>()));
     need(context.set_decoration(root, {.fill = {0.07F, 0.07F, 0.08F, 1}}));
@@ -23,6 +24,14 @@ Workspace::Workspace(gui::TextEngine& text, gui::FontId font, gui::TextureId atl
     need(context.set_layout_params(toolbar, params));
     need(context.set_decoration(toolbar, {.fill = {0.10F, 0.10F, 0.11F, 1}}));
     static_cast<void>(label(toolbar, "Truffle Studio"));
+    undo_button = need(gui::Widget::create(context, toolbar, {
+        .kind = gui::WidgetKind::button, .text = "Undo",
+        .text_engine = &text_, .font = font_, .atlas = atlas_,
+        .activated = [this] { undo(); }}));
+    redo_button = need(gui::Widget::create(context, toolbar, {
+        .kind = gui::WidgetKind::button, .text = "Redo",
+        .text_engine = &text_, .font = font_, .atlas = atlas_,
+        .activated = [this] { redo(); }}));
     reset_layout = need(gui::Widget::create(context, toolbar, {
         .kind = gui::WidgetKind::button, .text = "Reset layout",
         .text_engine = &text_, .font = font_, .atlas = atlas_,
@@ -51,9 +60,13 @@ Workspace::Workspace(gui::TextEngine& text, gui::FontId font, gui::TextureId atl
     const auto properties = panel(12);
     static_cast<void>(label(properties, "Name"));
     name = need(gui::Widget::create(context, properties, {
-        .kind = gui::WidgetKind::text_edit, .text = "Cube",
+        .kind = gui::WidgetKind::text_edit, .text = document_.state().name,
         .text_engine = &text_, .font = font_, .atlas = atlas_,
-        .text_changed = [this](const std::string& value) { report("Name: " + value); }}));
+        .text_changed = [this](const std::string& value) {
+            if (document_.edit("Rename", [&](model::DocumentState& state) { state.name = value; })) {
+                report("Name: " + value);
+            }
+        }}));
     visible = need(gui::Widget::create(context, properties, {
         .kind = gui::WidgetKind::checkbox, .text = "Visible",
         .text_engine = &text_, .font = font_, .atlas = atlas_, .checked = true,
@@ -75,6 +88,7 @@ Workspace::Workspace(gui::TextEngine& text, gui::FontId font, gui::TextureId atl
     default_layout = dock.save();
 
     status = label(root, "Ready");
+    document_.subscribe([this] { sync_from_document(); });
     params = {};
     params.padding = {10, 4, 10, 4};
     need(context.set_layout_params(status.element(), params));
@@ -90,6 +104,25 @@ void Workspace::update() {
         need(dock.restore(default_layout));
         report("Layout reset");
     }
+}
+
+void Workspace::undo() {
+    const auto label = document_.undo_label();
+    report(document_.undo() ? "Undo " + label : "Nothing to undo");
+}
+
+void Workspace::redo() {
+    const auto label = document_.redo_label();
+    report(document_.redo() ? "Redo " + label : "Nothing to redo");
+}
+
+bool Workspace::text_editing() const noexcept {
+    return name.alive() && context.focused() == name.element();
+}
+
+void Workspace::sync_from_document() {
+    const auto& value = document_.state().name;
+    if (need(name.text()) != value) { need(name.set_text(value)); }
 }
 
 gui::Widget Workspace::label(gui::ElementId parent, std::string value) {

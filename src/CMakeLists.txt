@@ -1,3 +1,8 @@
+# Document, sketch and solver code: no Truffle, SDL or OpenCASCADE dependency.
+add_library(studio_model INTERFACE)
+target_include_directories(studio_model INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_features(studio_model INTERFACE cxx_std_20)
+
 add_executable(truffle_studio
     main.cpp
     host/sdl_window.cpp
@@ -6,7 +11,7 @@ add_executable(truffle_studio
     studio/workspace.cpp)
 target_include_directories(truffle_studio PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(truffle_studio PRIVATE
-    Truffle::GUIDock Truffle::GUI Truffle::Renderer Truffle::BackendMetal SDL3::SDL3-static
+    studio_model Truffle::GUIDock Truffle::GUI Truffle::Renderer Truffle::BackendMetal SDL3::SDL3-static
     "-framework CoreText" "-framework Foundation")
 target_compile_options(truffle_studio PRIVATE "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
 studio_target_warnings(truffle_studio)

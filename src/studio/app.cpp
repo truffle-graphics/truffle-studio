@@ -130,6 +130,16 @@ void push_text(const SdlWindow& window, bool composing, const char* text) {
     SDL_PushEvent(&event);
 }
 
+void push_shortcut(const SdlWindow& window, SDL_Keycode key, SDL_Keymod mod) {
+    SDL_Event event{};
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.windowID = window.id();
+    event.key.key = key;
+    event.key.mod = mod;
+    event.key.down = true;
+    SDL_PushEvent(&event);
+}
+
 gui::Point center(gui::Context& context, gui::ElementId element) {
     const auto rect = need(context.absolute_bounds(element));
     return {rect.x + rect.width / 2, rect.y + rect.height / 2};
@@ -149,7 +159,8 @@ int run(const AppOptions& options) {
     auto text = need(gui::TextEngine::create(device));
     const auto font = load_system_font(text, 13);
     const auto atlas = need(presenter.painter().add_texture(need(text.atlas_texture()).get()));
-    Workspace workspace(text, font, atlas);
+    model::Document document;
+    Workspace workspace(document, text, font, atlas);
     auto& context = workspace.context;
     context.set_host(&window);
 
@@ -165,6 +176,16 @@ int run(const AppOptions& options) {
             return;
         }
         if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) { context.request_frame(); }
+        if (event.type == SDL_EVENT_KEY_DOWN && event.key.windowID == window.id() &&
+            event.key.key == SDLK_Z && (event.key.mod & SDL_KMOD_GUI) != 0 &&
+            !workspace.text_editing()) {
+            if ((event.key.mod & SDL_KMOD_SHIFT) != 0) {
+                workspace.redo();
+            } else {
+                workspace.undo();
+            }
+            return;
+        }
         window.translate(event, forward);
     };
     // One loop turn: sleep until input or the GUI's next timed update (bounded
@@ -222,7 +243,7 @@ int run(const AppOptions& options) {
         expect(window.text_input_active(), "focusing the editor did not start text input");
         push_text(window, true, "\xE3\x81\x8B"); // か, still composing
         settle();
-        expect(need(workspace.name.text()) == "Cube", "composition changed committed text");
+        expect(need(workspace.name.text()) == "Untitled", "composition changed committed text");
         push_text(window, false, "\xE6\x97\xA5\xE6\x9C\xAC"); // 日本
         settle();
         const auto edited = need(workspace.name.text());
@@ -230,6 +251,19 @@ int run(const AppOptions& options) {
                "committed IME text did not reach the editor");
         expect(edited.find("\xE3\x81\x8B") == std::string::npos, "preedit text was committed");
         expect(need(workspace.status.text()) == "Name: " + edited, "name edits were not reported");
+        expect(document.state().name == edited, "the name edit did not reach the document");
+
+        push_shortcut(window, SDLK_Z, SDL_KMOD_GUI);
+        settle();
+        expect(document.state().name == edited, "Cmd+Z undid the document while a text field was focused");
+        push_click(window, center(context, workspace.undo_button.element()));
+        settle();
+        expect(document.state().name == "Untitled", "Undo did not revert the rename");
+        expect(need(workspace.name.text()) == "Untitled", "the editor did not follow undo");
+        push_shortcut(window, SDLK_Z, static_cast<SDL_Keymod>(SDL_KMOD_GUI | SDL_KMOD_SHIFT));
+        settle();
+        expect(document.state().name == edited, "Shift+Cmd+Z did not redo the rename");
+        expect(need(workspace.status.text()) == "Redo Rename", "redo was not reported");
 
         need(workspace.dock.dock("properties", "scene", dock::DropSide::center));
         settle();
