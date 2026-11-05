@@ -186,6 +186,7 @@ int run(const AppOptions& options) {
             dispatch(event);
             while (SDL_PollEvent(&event)) { dispatch(event); }
         }
+        workspace.update();
         const auto metrics = window.metrics();
         if (!metrics) { return; }
         need(context.set_viewport(metrics->logical, metrics->scale));
@@ -207,25 +208,41 @@ int run(const AppOptions& options) {
         settle();
         expect(presenter.frames() == idle, "an idle GUI kept drawing");
 
-        push_click(window, center(context, workspace.action.element()));
+        namespace dock = gui::dock;
+        expect(dock::panel_ids(workspace.dock.layout()).size() == 3, "workspace panels are missing");
+
+        push_click(window, center(context, workspace.visible.element()));
         settle();
-        expect(workspace.actions == 1, "SDL pointer input did not activate the button");
-        expect(presenter.frames() > idle, "the status change was not drawn");
+        expect(!need(workspace.visible.checked()), "SDL pointer input did not toggle the checkbox");
+        expect(need(workspace.status.text()) == "Cube hidden", "the status line did not update");
+        expect(presenter.frames() > idle, "the property change was not drawn");
 
         push_click(window, center(context, workspace.name.element()));
         settle();
         expect(window.text_input_active(), "focusing the editor did not start text input");
         push_text(window, true, "\xE3\x81\x8B"); // か, still composing
         settle();
-        expect(need(workspace.name.text()) == "Untitled", "composition changed committed text");
+        expect(need(workspace.name.text()) == "Cube", "composition changed committed text");
         push_text(window, false, "\xE6\x97\xA5\xE6\x9C\xAC"); // 日本
         settle();
         const auto edited = need(workspace.name.text());
         expect(edited.find("\xE6\x97\xA5\xE6\x9C\xAC") != std::string::npos,
                "committed IME text did not reach the editor");
         expect(edited.find("\xE3\x81\x8B") == std::string::npos, "preedit text was committed");
-        std::cout << "studio smoke: frames=" << presenter.frames()
-                  << " actions=" << workspace.actions << " name=" << edited << '\n';
+        expect(need(workspace.status.text()) == "Name: " + edited, "name edits were not reported");
+
+        need(workspace.dock.dock("properties", "scene", dock::DropSide::center));
+        settle();
+        const auto moved = workspace.dock.save();
+        expect(moved != workspace.default_layout, "docking a panel did not change the layout");
+        need(workspace.dock.restore(workspace.default_layout));
+        need(workspace.dock.restore(moved));
+        expect(workspace.dock.save() == moved, "the layout did not round-trip");
+        push_click(window, center(context, workspace.reset_layout.element()));
+        settle();
+        expect(workspace.dock.save() == workspace.default_layout, "Reset layout did not restore");
+        expect(need(workspace.status.text()) == "Layout reset", "the reset was not reported");
+        std::cout << "studio smoke: frames=" << presenter.frames() << " name=" << edited << '\n';
     }
     context.set_host(nullptr);
     return 0;

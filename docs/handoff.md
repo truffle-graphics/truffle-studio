@@ -14,10 +14,19 @@ Foundation batch (#1) in progress on `feat/studio-foundation`:
   idle-waiting loop, `--smoke` script). `ctest` smoke passes under Metal
   validation: idle draws nothing, injected SDL clicks and IME
   composition/commit reach widgets.
+- #4 workspace: `src/studio/workspace` builds a toolbar (Reset layout), a
+  Truffle `DockSpace` with Scene, Viewport and Properties panels, and a
+  status line. Properties edits (name, visible, opacity) report to the status
+  line; Reset layout restores the saved default dock layout after input
+  dispatch. Smoke covers panels, checkbox and IME edits, dock change,
+  save/restore round-trip and reset. Visual check not done by the agent
+  (no screen-capture permission).
 
 ## Next
 
-- #4 first docked workspace UI.
+- Open the batch PR into `develop`, review and merge.
+- Candidate Truffle needs: tree widget for the Scene panel, persisted
+  window/dock layout, a 3D viewport panel rendering into the dock.
 
 ## Risks
 
