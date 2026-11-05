@@ -492,24 +492,21 @@ int run(const AppOptions& options) {
         expect(std::abs(length(bottom) - 30) < 1e-6 && need(field.text()) == "30",
                "undo did not restore the width and its field");
 
-        // The 3D view. Features arrive with #14; until then the smoke test
-        // extrudes the rectangle through the kernel directly.
+        // Extrude the rectangle; the new feature is selected and fitted in 3D.
         auto& view = cad_space->view;
-        kernel::Loop outline;
-        const std::array<kernel::Vec2, 4> corners{{{0, 0}, {30, 0}, {30, 20}, {0, 20}}};
-        for (std::size_t i = 0; i < corners.size(); ++i) {
-            outline.segments.emplace_back(kernel::Line{corners[i], corners[(i + 1) % corners.size()]});
-        }
-        const std::array profiles{kernel::Profile{outline, {}}};
-        view.set_mesh(kernel::tessellate(kernel::extrude({}, profiles, 10), 0.1));
-        expect(scene.has_mesh(), "the extruded mesh did not reach the scene");
-        const auto before_3d = scene.passes();
+        const auto volume = [&] { return cad_space->regeneration().volume(); };
+        push_click(window, center(context, cad_space->extrude_button.element()));
+        settle();
+        expect(document.state().extrudes.size() == 1 && cad_space->extrude_buttons.size() == 1,
+               "Extrude did not add a feature to the tree");
+        expect(scene.has_mesh() && std::abs(volume() - 6000) < 1e-6, "the extrude did not regenerate a 6000 mm3 solid");
+        expect(cad_space->showing_model(), "Extrude did not switch to the 3D view");
+        expect(std::abs(view.camera.target.x - 15) < 1e-6 && std::abs(view.camera.target.z - 5) < 1e-6,
+               "the new extrude was not fitted");
+        const auto before_fit = scene.passes();
         push_click(window, center(context, cad_space->fit_view.element()));
         settle();
-        expect(cad_space->showing_model(), "Fit did not switch to the 3D view");
-        expect(scene.passes() > before_3d, "the 3D view rendered no pass");
-        expect(std::abs(view.camera.target.x - 15) < 1e-6 && std::abs(view.camera.target.z - 5) < 1e-6,
-               "Fit did not centre the part");
+        expect(scene.passes() > before_fit, "the 3D view rendered no pass");
         const auto yaw = view.camera.yaw;
         const auto distance = view.camera.distance;
         const auto middle = center(context, view.element());
@@ -529,6 +526,36 @@ int run(const AppOptions& options) {
         context.request_frame();
         settle();
         expect(scene.passes() == shown, "a hidden 3D view kept rendering");
+
+        // Regeneration follows sketch dimensions, feature parameters and undo.
+        const auto type_into = [&](const gui::Widget& widget, const char* text) {
+            push_click(window, center(context, widget.element()));
+            settle();
+            for (int i = 0; i < 4; ++i) {
+                push_shortcut(window, SDLK_BACKSPACE, SDL_KMOD_NONE);
+                push_shortcut(window, SDLK_DELETE, SDL_KMOD_NONE);
+            }
+            push_text(window, false, text);
+            push_shortcut(window, SDLK_RETURN, SDL_KMOD_NONE);
+            settle();
+        };
+        type_into(editor.dimension_field(width), "45");
+        expect(std::abs(volume() - 9000) < 1e-6, "the extrude did not follow the width");
+        push_shortcut(window, SDLK_Z, SDL_KMOD_GUI);
+        settle();
+        expect(std::abs(volume() - 6000) < 1e-6, "undoing the width did not restore the solid");
+        push_click(window, center(context, cad_space->extrude_buttons[0].element()));
+        settle();
+        expect(cad_space->showing_model() && cad_space->extrude_distance.alive() &&
+                   need(cad_space->extrude_distance.text()) == "10",
+               "selecting the extrude did not show its distance");
+        type_into(cad_space->extrude_distance, "25");
+        expect(std::abs(volume() - 15000) < 1e-6, "editing the distance did not regenerate");
+        expect(!cad_space->text_editing(context), "Enter did not hand focus back to the 3D view");
+        push_shortcut(window, SDLK_Z, SDL_KMOD_GUI);
+        settle();
+        expect(std::abs(volume() - 6000) < 1e-6 && need(cad_space->extrude_distance.text()) == "10",
+               "undoing the distance did not restore the solid and its field");
         std::cout << "studio smoke: frames=" << presenter.frames() << " scene passes=" << scene.passes()
                   << " name=" << edited << '\n';
     }

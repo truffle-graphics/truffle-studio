@@ -1,5 +1,6 @@
 #pragma once
 
+#include "model/feature.hpp"
 #include "model/history.hpp"
 #include "model/sketch.hpp"
 
@@ -17,9 +18,19 @@ struct DocumentState {
     std::string name = "Untitled";
     ObjectId next_id = 1;
     std::vector<Sketch> sketches;
+    std::vector<Extrude> extrudes; // in creation order
 
     bool operator==(const DocumentState&) const = default;
 
+    const Extrude* extrude(ObjectId id) const noexcept {
+        for (const auto& e : extrudes) {
+            if (e.id == id) { return &e; }
+        }
+        return nullptr;
+    }
+    Extrude* extrude(ObjectId id) noexcept {
+        return const_cast<Extrude*>(static_cast<const DocumentState&>(*this).extrude(id));
+    }
     const Sketch* sketch(ObjectId id) const noexcept {
         for (const auto& s : sketches) {
             if (s.id == id) { return &s; }

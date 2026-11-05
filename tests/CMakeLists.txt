@@ -1,5 +1,5 @@
-add_executable(studio_tests main.cpp document_tests.cpp kernel_tests.cpp sketch_tests.cpp solver_tests.cpp view_tests.cpp)
-target_link_libraries(studio_tests PRIVATE studio_model studio_kernel)
+add_executable(studio_tests main.cpp document_tests.cpp kernel_tests.cpp sketch_tests.cpp solver_tests.cpp view_tests.cpp feature_tests.cpp)
+target_link_libraries(studio_tests PRIVATE studio_model studio_features)
 set_target_properties(studio_tests PROPERTIES BUILD_RPATH "${STUDIO_OCCT_LIBRARY_DIR}")
 studio_target_warnings(studio_tests)
 add_test(NAME studio_unit COMMAND studio_tests)

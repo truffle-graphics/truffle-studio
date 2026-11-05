@@ -72,6 +72,17 @@ TEST(kernel_extrudes_profile_with_hole_and_arc) {
     CHECK_NEAR(k::volume(solid), expected);
 }
 
+TEST(kernel_accepts_reversed_arcs_in_clockwise_loops) {
+    // The slot walked clockwise: both end arcs are traversed end to start.
+    k::Profile profile{.outer = {{k::Line{{0, 10}, {20, 10}},
+                                  k::Arc{{20, 5}, 5, -std::numbers::pi / 2, std::numbers::pi / 2, true},
+                                  k::Line{{20, 0}, {0, 0}},
+                                  k::Arc{{0, 5}, 5, std::numbers::pi / 2, 3 * std::numbers::pi / 2, true}}}};
+    const auto solid = k::extrude({}, {&profile, 1}, 2);
+    CHECK_NEAR(k::volume(solid), (20 * 10 + std::numbers::pi * 25) * 2);
+    CHECK(outward(k::tessellate(solid, 0.1)));
+}
+
 TEST(kernel_uses_plane_frame) {
     const auto profile = rectangle(2, 3);
     const k::Plane side{.origin = {0, 0, 5}, .x_axis = {0, 1, 0}, .y_axis = {0, 0, 1}};

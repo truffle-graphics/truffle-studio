@@ -25,6 +25,22 @@ inline ObjectId add_sketch(DocumentState& state, SketchPlane plane) {
     return state.sketches.back().id;
 }
 
+// Adds an extrude of `sketch` named "Extrude N" and returns its id.
+inline ObjectId add_extrude(DocumentState& state, ObjectId sketch, double distance) {
+    std::size_t number = state.extrudes.size() + 1;
+    const auto taken = [&](const std::string& name) {
+        return std::ranges::any_of(state.extrudes, [&](const Extrude& e) { return e.name == name; });
+    };
+    while (taken("Extrude " + std::to_string(number))) { ++number; }
+    Extrude extrude;
+    extrude.id = Document::allocate(state);
+    extrude.name = "Extrude " + std::to_string(number);
+    extrude.sketch = sketch;
+    extrude.distance = distance;
+    state.extrudes.push_back(std::move(extrude));
+    return state.extrudes.back().id;
+}
+
 // The point nearest `position` within `tolerance`, or 0.
 inline ObjectId find_point(const Sketch& sketch, Vec2 position, double tolerance) {
     ObjectId found = 0;

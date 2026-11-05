@@ -1,5 +1,6 @@
 #pragma once
 
+#include "features/regenerate.hpp"
 #include "studio/cad/model_view.hpp"
 #include "studio/cad/sketch_editor.hpp"
 #include "studio/workspace.hpp"
@@ -34,29 +35,52 @@ public:
     truffle::gui::Widget part_name;
     truffle::gui::Widget sketch_info;
     truffle::gui::Widget new_sketch;
-    // One button per sketch, in document order.
+    truffle::gui::Widget extrude_button;
+    // The selected extrude's distance; only alive while one is selected.
+    truffle::gui::Widget extrude_distance;
+    // The feature tree: one button per sketch and per extrude, in document order.
     std::vector<truffle::gui::Widget> sketch_buttons;
+    std::vector<truffle::gui::Widget> extrude_buttons;
+
+    const features::Regeneration& regeneration() const noexcept { return regeneration_; }
+    model::ObjectId selected_extrude() const noexcept { return selected_extrude_; }
 
 private:
     struct Entry {
         truffle::gui::ElementId highlight;
         model::ObjectId sketch = 0;
+        model::ObjectId extrude = 0;
     };
 
     void sync();
-    void rebuild_sketch_list();
+    void rebuild_feature_list();
     void refresh();
-    std::string sketch_signature() const;
+    void regenerate();
+    void update_distance_field();
+    void submit_distance();
+    void extrude_active_sketch();
+    std::string feature_signature() const;
 
     WorkspaceServices* services_ = nullptr;
     std::uint64_t subscription_ = 0;
-    truffle::gui::ElementId sketch_list_;
+    truffle::gui::ElementId feature_list_;
+    truffle::gui::ElementId inspector_;
+    truffle::gui::ElementId distance_row_;
     truffle::gui::ElementId sketch_page_;
     truffle::gui::ElementId model_page_;
     truffle::gui::ElementId sketch_highlight_;
     truffle::gui::ElementId model_highlight_;
     std::vector<Entry> entries_;
     std::string listed_;
+    model::ObjectId selected_extrude_ = 0;
+    model::ObjectId distance_for_ = 0;
+    bool fit_pending_ = false;
+    // The inputs of the last regeneration; it reruns only when they change.
+    std::vector<model::Extrude> built_extrudes_;
+    std::vector<model::Sketch> built_sketches_;
+    bool built_ = false;
+    features::Regeneration regeneration_;
+    std::string reported_errors_;
 };
 
 } // namespace studio::cad

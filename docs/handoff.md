@@ -75,13 +75,27 @@ application with workspaces (CAD first) over a shared document; see ADR 0001.
   the axes and every sketch (active one highlighted) over the solid.
   `cad/sketch_geometry.hpp` holds the plane mapping (XZ: y→Z, YZ: x→Y,
   y→Z) and curve sampling shared with the editor. A hidden 3D page requests
-  no passes. Until #14 the smoke test extrudes the rectangle through the
-  kernel directly; unit tests cover the camera and plane mapping.
+  no passes. Unit tests cover the camera and plane mapping.
+- #14 extrude and regeneration: `model::Extrude` (sketch, signed
+  distance) lives in `DocumentState::extrudes` and shares the id sequence
+  with sketches. `features/regenerate` (library `studio_features`, model +
+  kernel only) turns each sketch's closed loops into profiles (a loop
+  nested at odd depth is a hole of its innermost encloser; reversed arcs
+  use `kernel::Arc::reversed`) and extrudes them; failures are recorded per
+  feature and never thrown. Separate solids are meshed side by side (no
+  boolean union yet). The Model panel is a feature tree in creation order;
+  "Extrude sketch" extrudes the active sketch 10 mm, selects it and fits
+  the 3D view. The workspace regenerates in `update()` only when extrudes
+  or their sketches change; the Inspector edits the selected extrude's
+  distance (Enter applies, focus returns to the view) and shows its volume
+  or error. The smoke test drives extrude, width and distance edits and
+  undo through the UI.
 
 ## Next
 
-#14 extrude feature and regeneration (replace the smoke test's direct
-kernel extrude with the feature tree).
+Milestone #6 complete: open the batch PR for `feat/cad-sketch-workspace`.
+Then plan the next CAD milestone (booleans between features, sketch on a
+face, save/load).
 
 ## Risks
 

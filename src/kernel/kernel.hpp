@@ -29,12 +29,15 @@ struct Line {
     Vec2 end;
 };
 
-// Counter-clockwise arc from `start_angle` to `end_angle` (radians).
+// Counter-clockwise arc from `start_angle` to `end_angle` (radians). A
+// `reversed` arc is the same curve walked from its end back to its start,
+// as a loop may traverse it.
 struct Arc {
     Vec2 center;
     double radius = 0;
     double start_angle = 0;
     double end_angle = 0;
+    bool reversed = false;
 };
 
 struct Circle {

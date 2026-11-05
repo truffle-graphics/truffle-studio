@@ -82,6 +82,7 @@ double signed_area(const Loop& loop) {
         } else if (const auto* arc = std::get_if<Arc>(&segment)) {
             constexpr int steps = 32;
             const double span = sweep(*arc);
+            const double before = area;
             Vec2 previous{arc->center.x + arc->radius * std::cos(arc->start_angle),
                           arc->center.y + arc->radius * std::sin(arc->start_angle)};
             for (int i = 1; i <= steps; ++i) {
@@ -91,6 +92,7 @@ double signed_area(const Loop& loop) {
                 add(previous, next);
                 previous = next;
             }
+            if (arc->reversed) { area = before - (area - before); }
         } else {
             const auto& circle = std::get<Circle>(segment);
             area += 2 * std::numbers::pi * circle.radius * circle.radius;
@@ -115,6 +117,7 @@ TopoDS_Wire make_wire(const Frame& f, const Loop& loop) {
             GC_MakeArcOfCircle make(circle, start, start + sweep(*arc), true);
             if (!make.IsDone()) { throw KernelError("an arc segment is degenerate"); }
             edge = BRepBuilderAPI_MakeEdge(make.Value()).Edge();
+            if (arc->reversed) { edge.Reverse(); }
         } else {
             const auto& circle = std::get<Circle>(segment);
             if (circle.radius <= 0) { throw KernelError("a circle has no radius"); }
