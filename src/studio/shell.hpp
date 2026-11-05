@@ -15,7 +15,7 @@ namespace studio {
 class Shell {
 public:
     Shell(model::Document& document, truffle::gui::TextEngine& text, truffle::gui::FontId font,
-          truffle::gui::TextureId atlas);
+          truffle::gui::TextureId atlas, SceneView* scene = nullptr);
     ~Shell();
     Shell(const Shell&) = delete;
     Shell& operator=(const Shell&) = delete;
@@ -27,6 +27,8 @@ public:
 
     // Applies deferred requests and updates the active workspace.
     void update();
+    // Lays out a frame that is due and lets the active workspace prepare it.
+    void before_frame();
 
     void undo();
     void redo();

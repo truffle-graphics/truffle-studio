@@ -14,9 +14,9 @@ constexpr gui::Color no_fill{0, 0, 0, 0};
 } // namespace
 
 Shell::Shell(model::Document& document, gui::TextEngine& text, gui::FontId font,
-             gui::TextureId atlas)
+             gui::TextureId atlas, SceneView* scene)
     : document_(document), ui_{context, text, font, atlas},
-      services_{ui_, document, [this](std::string message) { report(std::move(message)); }} {
+      services_{ui_, document, [this](std::string message) { report(std::move(message)); }, scene} {
     const auto root = context.root();
     need(context.set_layout(root, std::make_shared<gui::StackLayout>()));
     need(context.set_decoration(root, {.fill = {0.07F, 0.07F, 0.08F, 1}}));
@@ -123,6 +123,12 @@ void Shell::activate(std::string_view id) {
 void Shell::request(std::string_view id) {
     requested_ = id;
     context.request_frame();
+}
+
+void Shell::before_frame() {
+    need(context.update_styles());
+    context.update_layout(context.viewport());
+    if (active_) { active_->before_frame(); }
 }
 
 void Shell::update() {

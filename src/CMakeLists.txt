@@ -15,8 +15,10 @@ add_executable(truffle_studio
     host/sdl_window.cpp
     host/system_font.mm
     studio/app.cpp
+    studio/scene_view.cpp
     studio/shell.cpp
     studio/cad/cad_workspace.cpp
+    studio/cad/model_view.cpp
     studio/cad/sketch_editor.cpp)
 target_include_directories(truffle_studio PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(truffle_studio PRIVATE

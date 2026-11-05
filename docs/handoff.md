@@ -61,10 +61,27 @@ application with workspaces (CAD first) over a shared document; see ADR 0001.
   on the canvas in `update()` (Enter applies; events from fields are not
   canvas shortcuts). Curves turn green when fully constrained and red when
   over-constrained; the Inspector shows the status and DOF.
+- #13 3D viewport: needs Truffle render targets (truffle#255, merged in
+  #256; the submodule points at it). `studio/scene_view` renders the solid
+  mesh offscreen (embedded MSL, depth, two-sided lighting) into a
+  `SampledTexture::render_target` that the GUI shows as an element texture;
+  the presenter adds the requested pass to the frame graph before the GUI
+  pass with a shader-read barrier and a dependency. Studio now enables
+  `TFL_SHADER_ENABLE_METAL_COMPILER` to compile that program at startup.
+  `Workspace::before_frame()` runs after layout and before recording, so
+  the pass matches the current element size. The CAD viewport has
+  Sketch / 3D / Fit; `studio/cad/model_view` uses `cad/orbit_camera.hpp`
+  (Z up; left drag orbits, right/middle drag pans, wheel zooms) and draws
+  the axes and every sketch (active one highlighted) over the solid.
+  `cad/sketch_geometry.hpp` holds the plane mapping (XZ: y→Z, YZ: x→Y,
+  y→Z) and curve sampling shared with the editor. A hidden 3D page requests
+  no passes. Until #14 the smoke test extrudes the rectangle through the
+  kernel directly; unit tests cover the camera and plane mapping.
 
 ## Next
 
-#13 3D viewport, #14 extrude and regeneration.
+#14 extrude feature and regeneration (replace the smoke test's direct
+kernel extrude with the feature tree).
 
 ## Risks
 

@@ -1,6 +1,7 @@
 #include "studio/cad/sketch_editor.hpp"
 
 #include "model/sketch_edit.hpp"
+#include "studio/cad/sketch_geometry.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -34,29 +35,6 @@ std::string format_value(double value) {
     while (text.back() == '0') { text.pop_back(); }
     if (text.back() == '.') { text.pop_back(); }
     return text;
-}
-
-std::vector<Vec2> arc_points(Vec2 center, Vec2 start, Vec2 end) {
-    const double radius = model::distance(center, start);
-    const double from = std::atan2(start.y - center.y, start.x - center.x);
-    double to = std::atan2(end.y - center.y, end.x - center.x);
-    if (to <= from) { to += tau; }
-    const auto steps = std::max(8, static_cast<int>((to - from) / tau * 96));
-    std::vector<Vec2> points;
-    for (int i = 0; i <= steps; ++i) {
-        const double a = from + (to - from) * i / steps;
-        points.push_back({center.x + radius * std::cos(a), center.y + radius * std::sin(a)});
-    }
-    return points;
-}
-
-std::vector<Vec2> circle_points(Vec2 center, double radius) {
-    std::vector<Vec2> points;
-    for (int i = 0; i <= 96; ++i) {
-        const double a = tau * i / 96;
-        points.push_back({center.x + radius * std::cos(a), center.y + radius * std::sin(a)});
-    }
-    return points;
 }
 
 double segment_distance(Vec2 p, Vec2 a, Vec2 b) {

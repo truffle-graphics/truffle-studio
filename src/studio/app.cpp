@@ -5,6 +5,7 @@
 #include "studio/check.hpp"
 #include "model/sketch_edit.hpp"
 #include "studio/cad/cad_workspace.hpp"
+#include "studio/scene_view.hpp"
 #include "studio/shell.hpp"
 
 #include "truffle/gui/painter.hpp"
@@ -68,6 +69,9 @@ public:
     Presenter& operator=(const Presenter&) = delete;
 
     gui::Painter& painter() noexcept { return painter_; }
+    renderer::PipelineCache& programs() noexcept { return programs_; }
+    renderer::FramePacer& pacer() noexcept { return pacer_; }
+    void set_scene(SceneView* scene) noexcept { scene_ = scene; }
     void set_clear(std::array<float, 4> clear) noexcept { clear_ = clear; }
     std::size_t frames() const noexcept { return frames_; }
 
@@ -79,9 +83,14 @@ public:
         const auto slot = need(pacer_.begin_frame());
         auto batches = need(painter_.record(context, slot, extent));
         renderer::FrameGraph graph;
-        graph.add_node(std::make_unique<renderer::RenderPassNode>(
+        // A requested 3D pass renders first; the GUI pass samples its target.
+        const auto scene = scene_ ? scene_->add_pass(graph, slot) : std::nullopt;
+        auto gui_pass = std::make_unique<renderer::RenderPassNode>(
             rhi::RenderPassDesc{.colorAttachments = {{.clear = {clear_[0], clear_[1], clear_[2], clear_[3]}}}},
-            std::move(batches), true));
+            std::move(batches), true);
+        if (scene) { gui_pass->transition_before(scene_->to_shader_read()); }
+        const auto gui_node = graph.add_node(std::move(gui_pass));
+        if (scene) { need(graph.add_dependency(*scene, gui_node)); }
         const auto status = renderer_.render(graph, &swapchain_, pacer_.signal());
         pacer_.end_frame(renderer_.last_frame_stats().submitted);
         if (status.code == truffle::base::StatusCode::out_of_date) {
@@ -101,6 +110,7 @@ private:
     renderer::Renderer renderer_;
     renderer::FramePacer pacer_;
     gui::Painter painter_;
+    SceneView* scene_ = nullptr;
     std::size_t frames_ = 0;
     std::array<float, 4> clear_{0.05F, 0.05F, 0.06F, 1};
 };
@@ -131,6 +141,41 @@ void push_click(const SdlWindow& window, gui::Point at) {
         event.button.y = at.y;
         SDL_PushEvent(&event);
     }
+}
+
+void push_drag(const SdlWindow& window, gui::Point from, gui::Point to, std::uint8_t button) {
+    SDL_Event event{};
+    event.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+    event.button.windowID = window.id();
+    event.button.button = button;
+    event.button.down = true;
+    event.button.clicks = 1;
+    event.button.x = from.x;
+    event.button.y = from.y;
+    SDL_PushEvent(&event);
+    event = {};
+    event.type = SDL_EVENT_MOUSE_MOTION;
+    event.motion.windowID = window.id();
+    event.motion.x = to.x;
+    event.motion.y = to.y;
+    SDL_PushEvent(&event);
+    event = {};
+    event.type = SDL_EVENT_MOUSE_BUTTON_UP;
+    event.button.windowID = window.id();
+    event.button.button = button;
+    event.button.x = to.x;
+    event.button.y = to.y;
+    SDL_PushEvent(&event);
+}
+
+void push_wheel(const SdlWindow& window, gui::Point at, float lines) {
+    SDL_Event event{};
+    event.type = SDL_EVENT_MOUSE_WHEEL;
+    event.wheel.windowID = window.id();
+    event.wheel.y = lines;
+    event.wheel.mouse_x = at.x;
+    event.wheel.mouse_y = at.y;
+    SDL_PushEvent(&event);
 }
 
 void push_text(const SdlWindow& window, bool composing, const char* text) {
@@ -179,8 +224,10 @@ int run(const AppOptions& options) {
     auto text = need(gui::TextEngine::create(device));
     const auto font = load_system_font(text, 13);
     const auto atlas = need(presenter.painter().add_texture(need(text.atlas_texture()).get()));
+    SceneView scene(device, presenter.programs(), presenter.painter(), presenter.pacer());
+    presenter.set_scene(&scene);
     model::Document document;
-    Shell shell(document, text, font, atlas);
+    Shell shell(document, text, font, atlas, &scene);
     shell.add(std::make_unique<cad::CadWorkspace>());
     shell.add(std::make_unique<PlannedWorkspace>("animation", "Animation"));
     shell.add(std::make_unique<PlannedWorkspace>("simulation", "Simulation"));
@@ -245,6 +292,7 @@ int run(const AppOptions& options) {
         if (!metrics) { return; }
         need(context.set_viewport(metrics->logical, metrics->scale));
         if (context.needs_frame(Clock::now())) {
+            shell.before_frame();
             need(context.prepare_frame(Clock::now()).status);
             presenter.draw(context, metrics->pixels);
         }
@@ -443,7 +491,46 @@ int run(const AppOptions& options) {
         settle();
         expect(std::abs(length(bottom) - 30) < 1e-6 && need(field.text()) == "30",
                "undo did not restore the width and its field");
-        std::cout << "studio smoke: frames=" << presenter.frames() << " name=" << edited << '\n';
+
+        // The 3D view. Features arrive with #14; until then the smoke test
+        // extrudes the rectangle through the kernel directly.
+        auto& view = cad_space->view;
+        kernel::Loop outline;
+        const std::array<kernel::Vec2, 4> corners{{{0, 0}, {30, 0}, {30, 20}, {0, 20}}};
+        for (std::size_t i = 0; i < corners.size(); ++i) {
+            outline.segments.emplace_back(kernel::Line{corners[i], corners[(i + 1) % corners.size()]});
+        }
+        const std::array profiles{kernel::Profile{outline, {}}};
+        view.set_mesh(kernel::tessellate(kernel::extrude({}, profiles, 10), 0.1));
+        expect(scene.has_mesh(), "the extruded mesh did not reach the scene");
+        const auto before_3d = scene.passes();
+        push_click(window, center(context, cad_space->fit_view.element()));
+        settle();
+        expect(cad_space->showing_model(), "Fit did not switch to the 3D view");
+        expect(scene.passes() > before_3d, "the 3D view rendered no pass");
+        expect(std::abs(view.camera.target.x - 15) < 1e-6 && std::abs(view.camera.target.z - 5) < 1e-6,
+               "Fit did not centre the part");
+        const auto yaw = view.camera.yaw;
+        const auto distance = view.camera.distance;
+        const auto middle = center(context, view.element());
+        push_drag(window, middle, {middle.x + 60, middle.y + 20}, SDL_BUTTON_LEFT);
+        push_wheel(window, middle, 2);
+        settle();
+        expect(view.camera.yaw != yaw, "dragging did not orbit the view");
+        expect(view.camera.distance < distance, "the wheel did not zoom in");
+        const auto target = view.camera.target;
+        push_drag(window, middle, {middle.x + 30, middle.y}, SDL_BUTTON_RIGHT);
+        settle();
+        expect(cad::length(view.camera.target - target) > 1e-6, "right-dragging did not pan");
+        push_click(window, center(context, cad_space->sketch_mode.element()));
+        settle();
+        expect(!cad_space->showing_model(), "the Sketch button did not return to the editor");
+        const auto shown = scene.passes();
+        context.request_frame();
+        settle();
+        expect(scene.passes() == shown, "a hidden 3D view kept rendering");
+        std::cout << "studio smoke: frames=" << presenter.frames() << " scene passes=" << scene.passes()
+                  << " name=" << edited << '\n';
     }
     context.set_host(nullptr);
     return 0;

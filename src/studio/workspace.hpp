@@ -12,6 +12,8 @@
 
 namespace studio {
 
+class SceneView;
+
 // How the engine is configured while a workspace is active. Each workspace
 // states what it is optimised for; the app applies the profile on switch.
 struct EngineProfile {
@@ -26,6 +28,7 @@ struct WorkspaceServices {
     Ui ui;
     model::Document& document;
     std::function<void(std::string)> report;
+    SceneView* scene = nullptr; // offscreen 3D rendering; null without a GPU
 };
 
 // A mode of the application over the shared document. The shell builds the
@@ -49,6 +52,9 @@ public:
     virtual void teardown() {}
     // Once per loop turn, outside input dispatch.
     virtual void update() {}
+    // After layout, before the frame is recorded: may request 3D passes and
+    // update decorations that depend on element sizes.
+    virtual void before_frame() {}
     // True while a workspace text field owns keyboard editing shortcuts.
     virtual bool text_editing(const truffle::gui::Context&) const { return false; }
 };

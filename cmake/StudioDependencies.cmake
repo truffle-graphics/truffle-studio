@@ -21,6 +21,8 @@ endforeach()
 # Truffle: only the libraries Studio links, Metal presentation and GUI text.
 set(TFL_BUILD_BACKEND_METAL ON CACHE BOOL "" FORCE)
 set(TFL_GUI_ENABLE_TEXT ON CACHE BOOL "" FORCE)
+# The 3D view compiles its MSL program at startup.
+set(TFL_SHADER_ENABLE_METAL_COMPILER ON CACHE BOOL "" FORCE)
 set(TFL_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(TFL_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(TFL_INSTALL OFF CACHE BOOL "" FORCE)

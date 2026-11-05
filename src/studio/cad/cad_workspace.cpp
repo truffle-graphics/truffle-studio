@@ -2,12 +2,22 @@
 
 #include "model/sketch_edit.hpp"
 
+#include <memory>
+
 namespace studio::cad {
 namespace gui = truffle::gui;
 namespace dock = truffle::gui::dock;
 
 namespace {
 constexpr gui::Color selected{0.24F, 0.45F, 0.85F, 1};
+
+// A vertical stack under `parent` that takes the leftover height.
+gui::ElementId page(gui::Context& context, gui::ElementId parent) {
+    const auto element = need(context.create(parent));
+    need(context.set_layout(element, std::make_shared<gui::StackLayout>(gui::StackOptions{.spacing = 8})));
+    need(context.set_clips_children(element, true));
+    return element;
+}
 
 std::string plural(std::size_t count, const char* noun) {
     return std::to_string(count) + " " + noun + (count == 1 ? "" : "s");
@@ -42,8 +52,20 @@ void CadWorkspace::build(WorkspaceServices& services, dock::DockSpace& space) {
     }
 
     const auto viewport = ui.column(8);
+    const auto modes = ui.row(viewport, 4);
+    sketch_highlight_ = ui.row(modes, 0, {2, 2, 2, 2});
+    sketch_mode = ui.button(sketch_highlight_, "Sketch", [this] { show_model(false); });
+    model_highlight_ = ui.row(modes, 0, {2, 2, 2, 2});
+    model_mode = ui.button(model_highlight_, "3D", [this] { show_model(true); });
+    fit_view = ui.button(modes, "Fit", [this] {
+        show_model(true);
+        view.fit();
+    });
+    sketch_page_ = page(ui.context, viewport);
+    model_page_ = page(ui.context, viewport);
     editor.changed = [this] { refresh(); };
-    editor.build(services, viewport);
+    editor.build(services, sketch_page_);
+    view.build(services, model_page_);
 
     const auto inspector = ui.column(12);
     static_cast<void>(ui.label(inspector, "Part name"));
@@ -65,6 +87,7 @@ void CadWorkspace::build(WorkspaceServices& services, dock::DockSpace& space) {
         dock::DockNode::tabs({"viewport"}),
         dock::DockNode::tabs({"inspector"})}, {0.2F, 0.58F, 0.22F})));
     subscription_ = services.document.subscribe([this] { sync(); });
+    show_model(false);
     rebuild_sketch_list();
     refresh();
 }
@@ -73,6 +96,14 @@ void CadWorkspace::teardown() {
     if (services_) { services_->document.unsubscribe(subscription_); }
     editor.teardown();
     editor.changed = {};
+    view.teardown();
+    sketch_mode = {};
+    model_mode = {};
+    fit_view = {};
+    sketch_page_ = {};
+    model_page_ = {};
+    sketch_highlight_ = {};
+    model_highlight_ = {};
     part_name = {};
     sketch_info = {};
     new_sketch = {};
@@ -90,6 +121,27 @@ void CadWorkspace::update() {
     editor.update();
 }
 
+void CadWorkspace::before_frame() { view.before_frame(); }
+
+void CadWorkspace::show_model(bool model) {
+    if (!services_) { return; }
+    auto& context = services_->ui.context;
+    const auto show = [&](gui::ElementId element, bool shown) {
+        gui::LayoutParams params;
+        params.weight = shown ? 1.0F : 0.0F;
+        if (!shown) { params.height = 0.0F; }
+        need(context.set_layout_params(element, params));
+        need(context.set_interaction(element, {.hit_test = false, .enabled = shown}));
+    };
+    show(sketch_page_, !model);
+    show(model_page_, model);
+    need(context.set_decoration(sketch_highlight_, {.fill = model ? gui::Color{} : selected, .corner_radius = 4}));
+    need(context.set_decoration(model_highlight_, {.fill = model ? selected : gui::Color{}, .corner_radius = 4}));
+    view.set_visible(model);
+    if (model) { static_cast<void>(context.focus(view.element())); }
+    context.request_frame();
+}
+
 bool CadWorkspace::text_editing(const gui::Context& context) const {
     return (part_name.alive() && context.focused() == part_name.element()) || editor.editing_dimension(context);
 }
@@ -98,6 +150,7 @@ void CadWorkspace::sync() {
     const auto& value = services_->document.state().name;
     if (part_name.alive() && need(part_name.text()) != value) { need(part_name.set_text(value)); }
     editor.sync();
+    view.redraw();
     services_->ui.context.request_frame();
 }
 
@@ -129,6 +182,7 @@ void CadWorkspace::rebuild_sketch_list() {
 void CadWorkspace::refresh() {
     if (!services_) { return; }
     auto& context = services_->ui.context;
+    view.set_active_sketch(editor.sketch());
     for (const auto& entry : entries_) {
         const auto fill = entry.sketch == editor.sketch() ? selected : gui::Color{};
         need(context.set_decoration(entry.highlight, {.fill = fill, .corner_radius = 4}));
