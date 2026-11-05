@@ -46,11 +46,25 @@ application with workspaces (CAD first) over a shared document; see ADR 0001.
   sketch creates one on XY. The Model panel lists sketches (rebuilt in
   `update()`, never during a click) with New sketch on XY/XZ/YZ; the
   Inspector shows curve, point and profile counts.
+- #12 constraints: `Sketch::constraints` (coincident, horizontal, vertical,
+  parallel, perpendicular, equal, distance, radius, diameter, fixed).
+  `model/solver.hpp` solves free point coordinates and circle radii with
+  Levenberg-Marquardt (numeric Jacobian; arcs keep end and start on one
+  circle), reports DOF and redundancy from the Jacobian rank, and writes
+  back only on convergence. `constrain()` rejects unsuitable entities,
+  duplicates and anything over-constraining; `set_dimension()` re-solves
+  or leaves the sketch alone. Rectangles get H/V constraints; removing
+  entities drops their constraints. The editor has Shift-click
+  multi-select, a constraint toolbar (Dimension = line length, point
+  distance, circle diameter, arc radius), point dragging that re-solves
+  with the point pinned (one undo step), and dimension text fields placed
+  on the canvas in `update()` (Enter applies; events from fields are not
+  canvas shortcuts). Curves turn green when fully constrained and red when
+  over-constrained; the Inspector shows the status and DOF.
 
 ## Next
 
-#12 constraint solver, #13 3D viewport, #14
-extrude and regeneration.
+#13 3D viewport, #14 extrude and regeneration.
 
 ## Risks
 

@@ -355,10 +355,10 @@ int run(const AppOptions& options) {
         push_shortcut(window, SDLK_S, SDL_KMOD_NONE);
         push_click(window, editor.to_window({0, 5}));
         settle();
-        expect(editor.selection() == circle, "clicking the circle did not select it");
+        expect(editor.selection() == std::vector{circle}, "clicking the circle did not select it");
         push_shortcut(window, SDLK_BACKSPACE, SDL_KMOD_NONE);
         settle();
-        expect(sketch()->circles.empty() && editor.selection() == 0, "Backspace did not delete the circle");
+        expect(sketch()->circles.empty() && editor.selection().empty(), "Backspace did not delete the circle");
         push_shortcut(window, SDLK_Z, SDL_KMOD_GUI);
         settle();
         expect(sketch()->circles.size() == 1, "Cmd+Z did not restore the deleted circle");
@@ -370,6 +370,79 @@ int run(const AppOptions& options) {
         settle();
         expect(document.state().sketches.size() == 1 && editor.sketch() == document.state().sketches[0].id,
                "New sketch did not create and activate a sketch");
+
+        // Constraints: fix a rectangle's corner, dimension two sides, then
+        // edit a dimension in its field and drag a free corner.
+        using Action = cad::SketchEditor::Action;
+        push_click(window, center(context, editor.tool_button(Tool::rectangle).element()));
+        push_click(window, editor.to_window({0, 0}));
+        push_click(window, editor.to_window({30, 20}));
+        settle();
+        expect(sketch()->lines.size() == 4 && sketch()->constraints.size() == 4,
+               "the rectangle did not get horizontal and vertical constraints");
+        expect(editor.status().status == model::SolveStatus::under && editor.status().freedom == 4,
+               "a new rectangle should have four degrees of freedom");
+        const auto corner = model::find_point(*sketch(), {0, 0}, 1e-6);
+        const auto bottom = sketch()->lines[0].id;
+        const auto right = sketch()->lines[1].id;
+        push_shortcut(window, SDLK_S, SDL_KMOD_NONE);
+        settle();
+        const auto select = [&](std::initializer_list<model::Vec2> at) {
+            bool first = true;
+            for (const auto p : at) {
+                SDL_SetModState(first ? SDL_KMOD_NONE : SDL_KMOD_SHIFT);
+                push_click(window, editor.to_window(p));
+                settle();
+                first = false;
+            }
+            SDL_SetModState(SDL_KMOD_NONE);
+        };
+        select({{0, 0}});
+        push_click(window, center(context, editor.action_button(Action::fixed).element()));
+        settle();
+        expect(editor.status().freedom == 2, "fixing a corner did not remove two degrees of freedom");
+        select({{15, 0}});
+        expect(editor.selection() == std::vector{bottom}, "clicking the bottom edge did not select it");
+        push_click(window, center(context, editor.action_button(Action::dimension).element()));
+        select({{30, 10}});
+        push_click(window, center(context, editor.action_button(Action::dimension).element()));
+        settle();
+        expect(editor.status().status == model::SolveStatus::full, "two dimensions did not fully constrain");
+        select({{15, 0}, {15, 20}});
+        expect(editor.selection().size() == 2, "Shift-click did not extend the selection");
+        push_click(window, center(context, editor.action_button(Action::parallel).element()));
+        settle();
+        expect(sketch()->constraints.size() == 7, "an over-constraining Parallel was accepted");
+        expect(need(shell.status.text()).find("over-constrain") != std::string::npos,
+               "the over-constraint was not reported");
+        model::ObjectId width = 0;
+        for (const auto& c : sketch()->constraints) {
+            if (c.kind == model::ConstraintKind::distance && c.a == bottom) { width = c.id; }
+        }
+        auto field = editor.dimension_field(width);
+        expect(field.alive() && need(field.text()) == "30", "the width field does not show 30");
+        push_click(window, center(context, field.element()));
+        settle();
+        expect(cad_space->text_editing(context), "the dimension field did not take focus");
+        for (int i = 0; i < 4; ++i) {
+            push_shortcut(window, SDLK_BACKSPACE, SDL_KMOD_NONE);
+            push_shortcut(window, SDLK_DELETE, SDL_KMOD_NONE);
+        }
+        push_text(window, false, "45");
+        push_shortcut(window, SDLK_RETURN, SDL_KMOD_NONE);
+        settle();
+        const auto length = [&](model::ObjectId id) {
+            const auto* l = sketch()->line(id);
+            return model::distance(sketch()->at(l->start), sketch()->at(l->end));
+        };
+        expect(std::abs(length(bottom) - 45) < 1e-6, "editing the width field did not resize the rectangle");
+        expect(sketch()->at(corner) == model::Vec2{0, 0}, "the fixed corner moved");
+        expect(std::abs(length(right) - 20) < 1e-6, "the height changed with the width");
+        expect(!cad_space->text_editing(context), "Enter did not hand focus back to the canvas");
+        push_shortcut(window, SDLK_Z, SDL_KMOD_GUI);
+        settle();
+        expect(std::abs(length(bottom) - 30) < 1e-6 && need(field.text()) == "30",
+               "undo did not restore the width and its field");
         std::cout << "studio smoke: frames=" << presenter.frames() << " name=" << edited << '\n';
     }
     context.set_host(nullptr);

@@ -3,16 +3,19 @@
 #include "studio/workspace.hpp"
 
 #include "model/sketch.hpp"
+#include "model/solver.hpp"
 
 #include <array>
 #include <functional>
+#include <map>
 #include <optional>
 #include <vector>
 
 namespace studio::cad {
 
-// The 2D sketch canvas: grid, pan and zoom, snapping and the drawing tools.
-// Geometry lives in the document; the editor keeps only view and tool state.
+// The 2D sketch canvas: grid, pan and zoom, snapping, the drawing tools,
+// constraints and editable dimensions. Geometry lives in the document; the
+// editor keeps only view, tool and selection state.
 class SketchEditor {
 public:
     enum class Tool : std::uint8_t { select, line, rectangle, circle, arc };
@@ -20,19 +23,40 @@ public:
                                       Tool::arc};
     static const char* tool_name(Tool tool) noexcept;
 
+    // Constraint commands applied to the selection.
+    enum class Action : std::uint8_t {
+        coincident, horizontal, vertical, parallel, perpendicular, equal, fixed, dimension
+    };
+    static constexpr std::array actions{Action::coincident, Action::horizontal, Action::vertical,
+                                        Action::parallel,   Action::perpendicular, Action::equal,
+                                        Action::fixed,      Action::dimension};
+    static const char* action_name(Action action) noexcept;
+
     // Builds the toolbar and canvas into `parent`, a vertical stack.
     void build(WorkspaceServices& services, truffle::gui::ElementId parent);
     void teardown();
     // Follows document changes (undo can remove the active sketch).
     void sync();
+    // Once per loop turn, outside input dispatch: creates, removes and
+    // places the dimension fields.
+    void update();
 
     void set_tool(Tool tool);
     Tool tool() const noexcept { return tool_; }
     model::ObjectId sketch() const noexcept { return sketch_; }
     void set_sketch(model::ObjectId sketch);
-    model::ObjectId selection() const noexcept { return selection_; }
+    const std::vector<model::ObjectId>& selection() const noexcept { return selection_; }
     truffle::gui::ElementId canvas() const noexcept { return canvas_; }
     truffle::gui::Widget tool_button(Tool tool) const;
+    truffle::gui::Widget action_button(Action action) const;
+    // Applies `action` to the selection; false (and a status message) if
+    // the selection does not suit it or it would over-constrain.
+    bool apply(Action action);
+    // How constrained the active sketch is.
+    const model::SolveResult& status() const noexcept { return status_; }
+    // The field showing a dimension constraint's value.
+    truffle::gui::Widget dimension_field(model::ObjectId constraint) const;
+    bool editing_dimension(const truffle::gui::Context& context) const;
 
     // Window position of a sketch point, and the reverse.
     truffle::gui::Point to_window(model::Vec2 point) const;
@@ -52,7 +76,12 @@ private:
     Snap snap(truffle::gui::Point window) const;
     void handle(truffle::gui::Context& context, truffle::gui::RoutedEvent& event);
     void click(const Snap& at);
-    void pick(model::Vec2 at);
+    model::ObjectId hit(model::Vec2 at) const;
+    void pick(model::Vec2 at, bool extend);
+    void drag_to(model::Vec2 at);
+    void submit_dimension(model::ObjectId constraint);
+    std::optional<truffle::gui::Point> dimension_anchor(const model::Sketch& sketch,
+                                                        const model::SketchConstraint& c) const;
     void commit(std::string label, const std::function<void(model::DocumentState&, model::Sketch&)>& draw);
     void cancel();
     void redraw();
@@ -63,10 +92,18 @@ private:
     WorkspaceServices* services_ = nullptr;
     truffle::gui::ElementId canvas_;
     std::vector<std::pair<truffle::gui::ElementId, truffle::gui::Widget>> tool_buttons_;
+    std::vector<truffle::gui::Widget> action_buttons_;
+    struct Field {
+        truffle::gui::Widget widget;
+        truffle::gui::Point position;
+    };
+    std::map<model::ObjectId, Field> fields_; // by dimension constraint id
 
     Tool tool_ = Tool::line;
     model::ObjectId sketch_ = 0;
-    model::ObjectId selection_ = 0;
+    std::vector<model::ObjectId> selection_;
+    model::SolveResult status_;
+    model::ObjectId dragging_ = 0; // point being dragged in the Select tool
     std::vector<model::Vec2> pending_; // clicks of the shape being drawn
     std::optional<Snap> hover_;
 

@@ -87,10 +87,11 @@ void CadWorkspace::update() {
     // The list is rebuilt here, not in sync(): a button that changes the
     // document must not be destroyed while its click is dispatched.
     if (services_ && sketch_signature() != listed_) { rebuild_sketch_list(); }
+    editor.update();
 }
 
 bool CadWorkspace::text_editing(const gui::Context& context) const {
-    return part_name.alive() && context.focused() == part_name.element();
+    return (part_name.alive() && context.focused() == part_name.element()) || editor.editing_dimension(context);
 }
 
 void CadWorkspace::sync() {
@@ -140,6 +141,14 @@ void CadWorkspace::refresh() {
                plural(sketch->curve_count(), "curve") + ", " + plural(sketch->points.size(), "point") + "\n" +
                plural(loops.closed.size(), "closed profile");
         if (loops.open) { info += ", " + plural(loops.open, "open chain"); }
+        const auto& status = editor.status();
+        info += "\n" + plural(sketch->constraints.size(), "constraint") + "\n";
+        switch (status.status) {
+        case model::SolveStatus::full: info += "Fully constrained"; break;
+        case model::SolveStatus::under: info += "Under-constrained (" + std::to_string(status.freedom) + " DOF)"; break;
+        case model::SolveStatus::over: info += "Over-constrained"; break;
+        }
+        if (!editor.selection().empty()) { info += "\n" + plural(editor.selection().size(), "item") + " selected"; }
     } else {
         info = "No sketch yet. Draw in the viewport\nto start one on the XY plane.";
     }

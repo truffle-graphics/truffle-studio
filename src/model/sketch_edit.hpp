@@ -74,8 +74,8 @@ inline ObjectId add_circle(DocumentState& state, Sketch& sketch, ObjectId center
     return sketch.circles.back().id;
 }
 
-// Four connected lines through opposite corners `a` and `b`. Returns false
-// if the rectangle has no area.
+// Four connected lines through opposite corners `a` and `b`, kept
+// horizontal and vertical by constraints. Returns false if it has no area.
 inline bool add_rectangle(DocumentState& state, Sketch& sketch, Vec2 a, Vec2 b, double tolerance) {
     if (std::abs(a.x - b.x) <= tolerance || std::abs(a.y - b.y) <= tolerance) { return false; }
     const ObjectId corners[] = {point_at(state, sketch, a, tolerance),
@@ -83,7 +83,11 @@ inline bool add_rectangle(DocumentState& state, Sketch& sketch, Vec2 a, Vec2 b, 
                                 point_at(state, sketch, b, tolerance),
                                 point_at(state, sketch, {a.x, b.y}, tolerance)};
     for (std::size_t i = 0; i < 4; ++i) {
-        static_cast<void>(add_line(state, sketch, corners[i], corners[(i + 1) % 4]));
+        const auto line = add_line(state, sketch, corners[i], corners[(i + 1) % 4]);
+        if (line) {
+            const auto kind = i % 2 == 0 ? ConstraintKind::horizontal : ConstraintKind::vertical;
+            sketch.constraints.push_back({Document::allocate(state), kind, line, 0, 0});
+        }
     }
     return true;
 }
@@ -100,9 +104,14 @@ inline void prune_points(Sketch& sketch) {
     });
 }
 
-// Removes a curve, or a point together with every curve using it, then any
-// points left unused. Returns false if `id` is not in the sketch.
+// Removes a constraint; or a curve, or a point together with every curve
+// using it, then any points left unused and the constraints on removed
+// entities. Returns false if `id` is not in the sketch.
 inline bool remove_entity(Sketch& sketch, ObjectId id) {
+    if (sketch.constraint(id)) {
+        std::erase_if(sketch.constraints, [&](const auto& c) { return c.id == id; });
+        return true;
+    }
     const auto before = sketch.curve_count() + sketch.points.size();
     const bool is_point = sketch.point(id) != nullptr;
     std::erase_if(sketch.lines, [&](const auto& c) {
@@ -116,6 +125,9 @@ inline bool remove_entity(Sketch& sketch, ObjectId id) {
         std::erase_if(sketch.points, [&](const auto& p) { return p.id == id; });
     }
     prune_points(sketch);
+    std::erase_if(sketch.constraints, [&](const SketchConstraint& c) {
+        return !sketch.contains(c.a) || (c.b != 0 && !sketch.contains(c.b));
+    });
     return sketch.curve_count() + sketch.points.size() != before;
 }
 

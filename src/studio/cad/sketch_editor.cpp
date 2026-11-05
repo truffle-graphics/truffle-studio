@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <numbers>
 
@@ -20,6 +22,19 @@ constexpr gui::Color curve_color{0.86F, 0.88F, 0.92F, 1};
 constexpr gui::Color accent{0.35F, 0.6F, 1, 1};
 constexpr gui::Color preview{0.35F, 0.6F, 1, 0.7F};
 constexpr gui::Color active_tool{0.24F, 0.45F, 0.85F, 1};
+constexpr gui::Color constrained_color{0.55F, 0.85F, 0.6F, 1};
+constexpr gui::Color conflict_color{0.95F, 0.45F, 0.4F, 1};
+constexpr float field_width = 64;
+constexpr float field_height = 26;
+
+std::string format_value(double value) {
+    char buffer[32];
+    std::snprintf(buffer, sizeof buffer, "%.3f", value);
+    std::string text = buffer;
+    while (text.back() == '0') { text.pop_back(); }
+    if (text.back() == '.') { text.pop_back(); }
+    return text;
+}
 
 std::vector<Vec2> arc_points(Vec2 center, Vec2 start, Vec2 end) {
     const double radius = model::distance(center, start);
@@ -72,6 +87,20 @@ const char* SketchEditor::tool_name(Tool tool) noexcept {
     return "?";
 }
 
+const char* SketchEditor::action_name(Action action) noexcept {
+    switch (action) {
+    case Action::coincident: return "Coincident";
+    case Action::horizontal: return "Horizontal";
+    case Action::vertical: return "Vertical";
+    case Action::parallel: return "Parallel";
+    case Action::perpendicular: return "Perpendicular";
+    case Action::equal: return "Equal";
+    case Action::fixed: return "Fixed";
+    case Action::dimension: return "Dimension";
+    }
+    return "?";
+}
+
 void SketchEditor::build(WorkspaceServices& services, gui::ElementId parent) {
     services_ = &services;
     auto& context = services.ui.context;
@@ -81,6 +110,13 @@ void SketchEditor::build(WorkspaceServices& services, gui::ElementId parent) {
         const auto highlight = services.ui.row(bar, 0, {2, 2, 2, 2});
         tool_buttons_.emplace_back(highlight, services.ui.button(highlight, tool_name(tool), [this, tool] {
             set_tool(tool);
+        }));
+    }
+
+    const auto constraints = services.ui.row(parent, 4);
+    for (const auto action : actions) {
+        action_buttons_.push_back(services.ui.button(constraints, action_name(action), [this, action] {
+            static_cast<void>(apply(action));
         }));
     }
 
@@ -96,6 +132,7 @@ void SketchEditor::build(WorkspaceServices& services, gui::ElementId parent) {
         handle(ctx, event);
     }));
     need(context.set_clips_children(parent, true));
+    need(context.set_clips_children(canvas_, true));
     refresh_tools();
     sync();
 }
@@ -104,6 +141,9 @@ void SketchEditor::teardown() {
     services_ = nullptr;
     canvas_ = {};
     tool_buttons_.clear();
+    action_buttons_.clear();
+    fields_.clear();
+    dragging_ = 0;
     pending_.clear();
     hover_.reset();
     pan_from_.reset();
@@ -114,13 +154,8 @@ void SketchEditor::sync() {
     const auto& state = services_->document.state();
     if (!state.sketch(sketch_)) { sketch_ = state.sketches.empty() ? 0 : state.sketches.back().id; }
     const auto* sketch = active();
-    const auto exists = [&](model::ObjectId id) {
-        const auto has = [&](const auto& items) {
-            return std::ranges::any_of(items, [&](const auto& item) { return item.id == id; });
-        };
-        return sketch && (has(sketch->points) || has(sketch->lines) || has(sketch->arcs) || has(sketch->circles));
-    };
-    if (selection_ && !exists(selection_)) { selection_ = 0; }
+    std::erase_if(selection_, [&](model::ObjectId id) { return !sketch || !sketch->contains(id); });
+    status_ = sketch ? model::analyse(*sketch) : model::SolveResult{};
     redraw();
     notify();
 }
@@ -136,7 +171,8 @@ void SketchEditor::set_tool(Tool tool) {
 void SketchEditor::set_sketch(model::ObjectId sketch) {
     if (sketch == sketch_) { return; }
     sketch_ = sketch;
-    selection_ = 0;
+    selection_.clear();
+    status_ = active() ? model::analyse(*active()) : model::SolveResult{};
     cancel();
     redraw();
     notify();
@@ -145,6 +181,202 @@ void SketchEditor::set_sketch(model::ObjectId sketch) {
 gui::Widget SketchEditor::tool_button(Tool tool) const {
     const auto index = static_cast<std::size_t>(std::ranges::find(tools, tool) - tools.begin());
     return index < tool_buttons_.size() ? tool_buttons_[index].second : gui::Widget{};
+}
+
+gui::Widget SketchEditor::action_button(Action action) const {
+    const auto index = static_cast<std::size_t>(std::ranges::find(actions, action) - actions.begin());
+    return index < action_buttons_.size() ? action_buttons_[index] : gui::Widget{};
+}
+
+gui::Widget SketchEditor::dimension_field(model::ObjectId constraint) const {
+    const auto it = fields_.find(constraint);
+    return it == fields_.end() ? gui::Widget{} : it->second.widget;
+}
+
+bool SketchEditor::editing_dimension(const gui::Context& context) const {
+    return std::ranges::any_of(fields_, [&](const auto& entry) {
+        return entry.second.widget.alive() && context.focused() == entry.second.widget.element();
+    });
+}
+
+bool SketchEditor::apply(Action action) {
+    if (!services_) { return false; }
+    const auto* sketch = active();
+    const std::string name = action_name(action);
+    if (!sketch || selection_.empty()) {
+        services_->report(name + ": select sketch geometry first");
+        return false;
+    }
+    using Kind = model::ConstraintKind;
+    struct Request {
+        Kind kind;
+        model::ObjectId a;
+        model::ObjectId b;
+    };
+    std::vector<Request> requests;
+    const auto& sel = selection_;
+    const auto pair = [&](Kind kind) {
+        if (sel.size() == 2) { requests.push_back({kind, sel[0], sel[1]}); }
+    };
+    switch (action) {
+    case Action::horizontal:
+    case Action::vertical:
+    case Action::fixed: {
+        const auto kind = action == Action::horizontal ? Kind::horizontal
+                          : action == Action::vertical ? Kind::vertical
+                                                       : Kind::fixed;
+        for (const auto id : sel) { requests.push_back({kind, id, 0}); }
+        break;
+    }
+    case Action::coincident:
+        // The point goes first.
+        if (sel.size() == 2) {
+            const bool swap = !sketch->point(sel[0]);
+            requests.push_back({Kind::coincident, sel[swap ? 1 : 0], sel[swap ? 0 : 1]});
+        }
+        break;
+    case Action::parallel: pair(Kind::parallel); break;
+    case Action::perpendicular: pair(Kind::perpendicular); break;
+    case Action::equal: pair(Kind::equal); break;
+    case Action::dimension:
+        if (sel.size() == 1 && sketch->line(sel[0])) {
+            requests.push_back({Kind::distance, sel[0], 0});
+        } else if (sel.size() == 1 && sketch->circle(sel[0])) {
+            requests.push_back({Kind::diameter, sel[0], 0});
+        } else if (sel.size() == 1 && sketch->arc(sel[0])) {
+            requests.push_back({Kind::radius, sel[0], 0});
+        } else {
+            pair(Kind::distance);
+        }
+        break;
+    }
+    auto error = requests.empty() ? model::ConstrainError::unsuitable : model::ConstrainError::none;
+    if (error == model::ConstrainError::none) {
+        static_cast<void>(services_->document.edit(name, [&](model::DocumentState& state) {
+            const auto saved = state;
+            auto* target = state.sketch(sketch_);
+            for (const auto& r : requests) {
+                if (error != model::ConstrainError::none) { break; }
+                error = model::constrain(state, *target, r.kind, r.a, r.b).error;
+            }
+            if (error != model::ConstrainError::none) { state = saved; }
+        }));
+    }
+    switch (error) {
+    case model::ConstrainError::none: services_->report(name + " added to " + active()->name); return true;
+    case model::ConstrainError::unsuitable: services_->report(name + " does not apply to the selection"); break;
+    case model::ConstrainError::over_constrained: services_->report(name + " would over-constrain the sketch"); break;
+    }
+    return false;
+}
+
+std::optional<gui::Point> SketchEditor::dimension_anchor(const model::Sketch& sketch,
+                                                         const model::SketchConstraint& c) const {
+    const auto bounds = need(services_->ui.context.bounds(canvas_));
+    const auto local = [&](Vec2 v) {
+        return gui::Point{bounds.width / 2 + static_cast<float>((v.x - center_.x) * scale_),
+                          bounds.height / 2 - static_cast<float>((v.y - center_.y) * scale_)};
+    };
+    if (c.kind == model::ConstraintKind::distance) {
+        if (const auto* l = sketch.line(c.a)) {
+            const auto a = local(sketch.at(l->start));
+            const auto b = local(sketch.at(l->end));
+            const float dx = b.x - a.x;
+            const float dy = b.y - a.y;
+            const float len = std::max(std::sqrt(dx * dx + dy * dy), 1.0F);
+            // Outside a counter-clockwise loop, clear of the line.
+            const float nx = -dy / len;
+            const float ny = dx / len;
+            const float gap = 6 + std::abs(nx) * field_width / 2 + std::abs(ny) * field_height / 2;
+            return gui::Point{(a.x + b.x) / 2 + nx * gap, (a.y + b.y) / 2 + ny * gap};
+        }
+        const auto a = local(sketch.at(c.a));
+        const auto b = local(sketch.at(c.b));
+        return gui::Point{(a.x + b.x) / 2, (a.y + b.y) / 2};
+    }
+    model::ObjectId center = 0;
+    double radius = 0;
+    if (const auto* circle = sketch.circle(c.a)) {
+        center = circle->center;
+        radius = circle->radius;
+    } else if (const auto* arc = sketch.arc(c.a)) {
+        center = arc->center;
+        radius = model::distance(sketch.at(arc->center), sketch.at(arc->start));
+    } else {
+        return std::nullopt;
+    }
+    const auto edge = sketch.at(center) + Vec2{radius, radius} * std::numbers::sqrt2 * 0.5;
+    const auto p = local(edge);
+    return gui::Point{p.x + 24, p.y - 16};
+}
+
+void SketchEditor::update() {
+    if (!services_ || !canvas_.valid()) { return; }
+    auto& context = services_->ui.context;
+    const auto* sketch = active();
+    const auto wanted = [&](model::ObjectId id) {
+        const auto* c = sketch ? sketch->constraint(id) : nullptr;
+        return c && model::is_dimension(c->kind);
+    };
+    for (auto it = fields_.begin(); it != fields_.end();) {
+        if (wanted(it->first)) {
+            ++it;
+        } else {
+            if (it->second.widget.alive()) { need(context.destroy(it->second.widget.element())); }
+            it = fields_.erase(it);
+        }
+    }
+    if (!sketch) { return; }
+    for (const auto& c : sketch->constraints) {
+        if (!model::is_dimension(c.kind)) { continue; }
+        auto it = fields_.find(c.id);
+        if (it == fields_.end()) {
+            const auto id = c.id;
+            auto widget = services_->ui.widget(canvas_, {.kind = gui::WidgetKind::text_edit,
+                                                          .text = format_value(c.value),
+                                                          .activated = [this, id] { submit_dimension(id); }});
+            it = fields_.emplace(id, Field{widget, {-1e9F, -1e9F}}).first;
+        }
+        auto& field = it->second;
+        const auto anchor = dimension_anchor(*sketch, c).value_or(gui::Point{});
+        const gui::Point position{std::round(anchor.x - field_width / 2), std::round(anchor.y - field_height / 2)};
+        if (position.x != field.position.x || position.y != field.position.y) {
+            gui::LayoutParams params;
+            params.width = field_width;
+            params.position = position;
+            need(context.set_layout_params(field.widget.element(), params));
+            field.position = position;
+        }
+        const auto text = format_value(c.value);
+        if (context.focused() != field.widget.element() && need(field.widget.text()) != text) {
+            need(field.widget.set_text(text));
+        }
+    }
+}
+
+void SketchEditor::submit_dimension(model::ObjectId constraint) {
+    const auto it = fields_.find(constraint);
+    if (!services_ || it == fields_.end()) { return; }
+    const auto text = need(it->second.widget.text());
+    char* end = nullptr;
+    const double value = std::strtod(text.c_str(), &end);
+    if (end == text.c_str() || *end != '\0' || !(value > 0)) {
+        services_->report("Enter a positive number of millimetres");
+    } else if (services_->document.edit("Edit dimension", [&](model::DocumentState& state) {
+                   if (auto* sketch = state.sketch(sketch_)) {
+                       static_cast<void>(model::set_dimension(*sketch, constraint, value));
+                   }
+               })) {
+        services_->report("Dimension set to " + format_value(value) + " mm");
+    } else if (const auto* sketch = active(); sketch && sketch->constraint(constraint) &&
+                                              sketch->constraint(constraint)->value == value) {
+        services_->report("Dimension unchanged");
+    } else {
+        services_->report("No solution with the dimension at " + format_value(value) + " mm");
+    }
+    // Hand focus back so the field shows the stored value again.
+    static_cast<void>(services_->ui.context.focus(canvas_));
+    services_->ui.context.request_frame();
 }
 
 gui::Point SketchEditor::to_window(Vec2 point) const {
@@ -184,13 +416,35 @@ SketchEditor::Snap SketchEditor::snap(gui::Point window) const {
 }
 
 void SketchEditor::handle(gui::Context& context, gui::RoutedEvent& event) {
-    if (event.current != canvas_) { return; }
+    // Events bubbling up from the dimension fields belong to them.
+    if (event.current != canvas_ || event.target != canvas_) { return; }
     if (const auto* pointer = event.input<gui::PointerEvent>()) {
         switch (pointer->action) {
         case gui::PointerAction::down:
             if (pointer->button == gui::PointerButton::primary) {
                 static_cast<void>(context.focus(canvas_));
-                click(snap(pointer->position));
+                if (tool_ != Tool::select) {
+                    click(snap(pointer->position));
+                    break;
+                }
+                const auto at = to_sketch(pointer->position);
+                const bool extend = gui::has(pointer->modifiers, gui::Modifiers::shift);
+                const auto* sketch = active();
+                const auto found = hit(at);
+                const bool fixed = sketch && std::ranges::any_of(sketch->constraints, [&](const auto& c) {
+                    return c.kind == model::ConstraintKind::fixed && c.a == found;
+                });
+                if (!extend && sketch && sketch->point(found) && !fixed) {
+                    // Drag the point; the solver keeps the constraints.
+                    selection_ = {found};
+                    dragging_ = found;
+                    services_->document.begin("Move point");
+                    static_cast<void>(context.capture_pointer(canvas_, pointer->pointer));
+                    redraw();
+                    notify();
+                } else {
+                    pick(at, extend);
+                }
             } else {
                 pan_from_ = pointer->position;
                 pan_center_ = center_;
@@ -199,6 +453,7 @@ void SketchEditor::handle(gui::Context& context, gui::RoutedEvent& event) {
             event.prevent_default();
             break;
         case gui::PointerAction::move:
+            if (dragging_) { drag_to(to_sketch(pointer->position)); }
             if (pan_from_) {
                 center_ = pan_center_ + Vec2{-(pointer->position.x - pan_from_->x) / scale_,
                                              (pointer->position.y - pan_from_->y) / scale_};
@@ -207,6 +462,11 @@ void SketchEditor::handle(gui::Context& context, gui::RoutedEvent& event) {
             redraw();
             break;
         case gui::PointerAction::up:
+            if (dragging_ && pointer->button == gui::PointerButton::primary) {
+                dragging_ = 0;
+                static_cast<void>(context.release_pointer(pointer->pointer));
+                if (services_->document.commit()) { services_->report("Moved point"); }
+            }
             if (pan_from_ && pointer->button != gui::PointerButton::primary) {
                 pan_from_.reset();
                 static_cast<void>(context.release_pointer(pointer->pointer));
@@ -214,6 +474,10 @@ void SketchEditor::handle(gui::Context& context, gui::RoutedEvent& event) {
             break;
         case gui::PointerAction::leave:
         case gui::PointerAction::cancel:
+            if (dragging_ && pointer->action == gui::PointerAction::cancel) {
+                dragging_ = 0;
+                services_->document.cancel();
+            }
             hover_.reset();
             pan_from_.reset();
             redraw();
@@ -228,23 +492,23 @@ void SketchEditor::handle(gui::Context& context, gui::RoutedEvent& event) {
         redraw();
         event.prevent_default();
     } else if (const auto* key = event.input<gui::KeyEvent>()) {
-        if (!key->down || key->modifiers != gui::Modifiers::none) { return; }
+        if (!key->down || key->modifiers != gui::Modifiers::none || dragging_) { return; }
         switch (key->key) {
         case gui::Key::escape:
             if (!pending_.empty()) {
                 cancel();
-            } else if (selection_) {
-                selection_ = 0;
+            } else if (!selection_.empty()) {
+                selection_.clear();
                 redraw();
                 notify();
             }
             break;
         case gui::Key::backspace:
         case gui::Key::delete_forward:
-            if (selection_) {
+            if (!selection_.empty()) {
                 const auto removed = selection_;
                 commit("Delete", [&](model::DocumentState&, model::Sketch& sketch) {
-                    static_cast<void>(model::remove_entity(sketch, removed));
+                    for (const auto id : removed) { static_cast<void>(model::remove_entity(sketch, id)); }
                 });
             }
             break;
@@ -262,9 +526,7 @@ void SketchEditor::handle(gui::Context& context, gui::RoutedEvent& event) {
 void SketchEditor::click(const Snap& at) {
     const auto p = at.position;
     switch (tool_) {
-    case Tool::select:
-        pick(p);
-        return;
+    case Tool::select: return;
     case Tool::line: {
         if (pending_.empty()) {
             pending_.push_back(p);
@@ -334,7 +596,38 @@ void SketchEditor::click(const Snap& at) {
     redraw();
 }
 
-void SketchEditor::pick(Vec2 at) {
+void SketchEditor::drag_to(Vec2 at) {
+    const auto point = dragging_;
+    services_->document.update([&](model::DocumentState& state) {
+        auto* sketch = state.sketch(sketch_);
+        if (!sketch) { return; }
+        auto moved = *sketch;
+        for (auto& p : moved.points) {
+            if (p.id == point) { p.position = at; }
+        }
+        const model::ObjectId pinned[] = {point};
+        // Positions the constraints cannot reach are skipped.
+        if (model::solve(moved, pinned).converged) { *sketch = std::move(moved); }
+    });
+}
+
+void SketchEditor::pick(Vec2 at, bool extend) {
+    const auto found = hit(at);
+    if (!extend) {
+        selection_.clear();
+        if (found) { selection_.push_back(found); }
+    } else if (found) {
+        if (const auto it = std::ranges::find(selection_, found); it != selection_.end()) {
+            selection_.erase(it);
+        } else {
+            selection_.push_back(found);
+        }
+    }
+    redraw();
+    notify();
+}
+
+model::ObjectId SketchEditor::hit(Vec2 at) const {
     const auto* sketch = active();
     model::ObjectId found = 0;
     if (sketch) {
@@ -359,9 +652,7 @@ void SketchEditor::pick(Vec2 at) {
             }
         }
     }
-    selection_ = found;
-    redraw();
-    notify();
+    return found;
 }
 
 void SketchEditor::commit(std::string label,
@@ -438,7 +729,11 @@ void SketchEditor::paint(gui::ShapeWriter& out, gui::Size size) const {
     grid(false);
 
     if (const auto* sketch = active()) {
-        const auto color = [&](model::ObjectId id) { return id == selection_ ? accent : curve_color; };
+        const auto selected = [&](model::ObjectId id) { return std::ranges::find(selection_, id) != selection_.end(); };
+        const auto base = status_.status == model::SolveStatus::over   ? conflict_color
+                          : status_.status == model::SolveStatus::full ? constrained_color
+                                                                       : curve_color;
+        const auto color = [&](model::ObjectId id) { return selected(id) ? accent : base; };
         for (const auto& l : sketch->lines) {
             out.line(local(sketch->at(l.start)), local(sketch->at(l.end)), 2, color(l.id));
         }
@@ -446,8 +741,12 @@ void SketchEditor::paint(gui::ShapeWriter& out, gui::Size size) const {
             polyline(arc_points(sketch->at(a.center), sketch->at(a.start), sketch->at(a.end)), 2, color(a.id));
         }
         for (const auto& c : sketch->circles) { polyline(circle_points(sketch->at(c.center), c.radius), 2, color(c.id)); }
-        for (const auto& p : sketch->points) {
-            dot(p.position, p.id == selection_ ? 4.5F : 3, p.id == selection_ ? accent : curve_color);
+        for (const auto& p : sketch->points) { dot(p.position, selected(p.id) ? 4.5F : 3, color(p.id)); }
+        for (const auto& c : sketch->constraints) {
+            if (c.kind == model::ConstraintKind::fixed) {
+                const auto p = local(sketch->at(c.a));
+                out.rect({p.x - 6, p.y - 6, 12, 12}, {.border = base, .border_width = 1.5F});
+            }
         }
     }
 
