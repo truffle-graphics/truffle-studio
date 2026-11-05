@@ -1,4 +1,4 @@
-# Truffle and SDL3 are Git submodules under external/ and build from source.
+# Truffle, SDL3 and OpenCASCADE are Git submodules under external/ and build from source.
 
 function(studio_require_submodule path marker hint)
     if(NOT EXISTS "${PROJECT_SOURCE_DIR}/${path}/${marker}")
@@ -10,6 +10,8 @@ studio_require_submodule(external/truffle CMakeLists.txt
     "git submodule update --init external/truffle")
 studio_require_submodule(external/SDL CMakeLists.txt
     "git submodule update --init external/SDL")
+studio_require_submodule(external/occt CMakeLists.txt
+    "git submodule update --init external/occt")
 foreach(marker freetype/CMakeLists.txt harfbuzz/CMakeLists.txt
                sheenbidi/Source/SheenBidi.c utf8proc/utf8proc.c)
     studio_require_submodule(external/truffle/vendor ${marker}
@@ -39,6 +41,8 @@ set(SDL_RENDER OFF CACHE BOOL "" FORCE)
 set(SDL_HAPTIC OFF CACHE BOOL "" FORCE)
 set(SDL_SENSOR OFF CACHE BOOL "" FORCE)
 add_subdirectory("${PROJECT_SOURCE_DIR}/external/SDL" external/SDL EXCLUDE_FROM_ALL)
+
+include(StudioOcct)
 
 function(studio_target_warnings target)
     target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)

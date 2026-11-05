@@ -19,7 +19,8 @@ Truffle/
 └── truffle-studio/   # this repository
     └── external/
         ├── truffle/  # Truffle submodule (tracks develop)
-        └── SDL/      # SDL3 submodule (pinned release)
+        ├── SDL/      # SDL3 submodule (pinned release)
+        └── occt/     # OpenCASCADE submodule (pinned release, shallow)
 ```
 
 ## Setup
@@ -27,7 +28,7 @@ Truffle/
 ```sh
 git clone https://github.com/truffle-graphics/truffle-studio.git
 cd truffle-studio
-git submodule update --init external/truffle external/SDL
+git submodule update --init external/truffle external/SDL external/occt
 git -C external/truffle submodule update --init \
     vendor/freetype vendor/harfbuzz vendor/sheenbidi vendor/utf8proc
 ```
@@ -46,6 +47,10 @@ ctest --preset dev
 
 Requirements: CMake 3.23+, Ninja, Xcode command-line tools.
 
+The first build also compiles the OpenCASCADE modelling toolkits (Release,
+shared libraries) into `build/<preset>/occt`. This takes a few minutes on
+Apple Silicon. Later builds reuse it.
+
 ## Updating Truffle
 
 ```sh
@@ -63,3 +68,7 @@ git add external/truffle
 ## License
 
 Apache License 2.0. See `LICENSE`.
+
+Studio links OpenCASCADE dynamically, under the LGPL-2.1 with the
+OpenCASCADE exception (see `external/occt/LICENSE_LGPL_21.txt` and
+`external/occt/OCCT_LGPL_EXCEPTION.txt`).

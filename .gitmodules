@@ -5,3 +5,7 @@
 [submodule "external/SDL"]
 	path = external/SDL
 	url = https://github.com/libsdl-org/SDL.git
+[submodule "external/occt"]
+	path = external/occt
+	url = https://github.com/Open-Cascade-SAS/OCCT.git
+	shallow = true

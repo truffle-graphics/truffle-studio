@@ -24,11 +24,19 @@ application with workspaces (CAD first) over a shared document; see ADR 0001.
   disabled `PlannedWorkspace` entries. The old Scene/Viewport/Properties
   placeholder UI is gone. Smoke registers a `Probe` workspace to test
   switching, profile changes and layout retention.
+- #10 kernel: `external/occt` (V8_0_1, shallow) builds through
+  `cmake/StudioOcct.cmake` as an ExternalProject (Release, shared, only
+  TKPrim/TKMesh/TKBO and dependencies; about 2 minutes clean) into
+  `build/<preset>/occt`. `src/kernel/kernel.hpp` is the OCCT-free interface
+  (lines, arcs, circles, loops, profiles with holes, plane frames; extrude,
+  tessellate, volume, bounds; `KernelError`). `occt_kernel.cpp` implements
+  it, normalising loop winding and uniting multiple profiles. Seven kernel
+  tests cover volumes, winding, tolerance, arcs/holes, planes, open-profile
+  rejection and unions.
 
 ## Next
 
-#10 OpenCASCADE and the
-kernel, #11 sketch editor, #12 constraint solver, #13 3D viewport, #14
+#11 sketch editor, #12 constraint solver, #13 3D viewport, #14
 extrude and regeneration.
 
 ## Risks
