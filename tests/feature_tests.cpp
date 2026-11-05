@@ -89,6 +89,20 @@ TEST(regeneration_follows_edits_and_undo) {
     CHECK_NEAR(features::regenerate(document.state()).volume(), 6000.0);
 }
 
+TEST(crossing_profiles_fail_the_feature) {
+    // A circle over a rectangle's corner, and an island inside the
+    // rectangle only: no consistent nesting exists.
+    DocumentState state;
+    auto& sketch = *state.sketch(add_sketch(state, SketchPlane::xy));
+    CHECK(add_rectangle(state, sketch, {0, 0}, {40, 20}, 1e-6));
+    CHECK(add_circle(state, sketch, point(state, sketch, {0.5, 0.5}), 30) != 0);
+    CHECK(add_circle(state, sketch, point(state, sketch, {35, 15}), 2) != 0);
+    add_extrude(state, sketch.id, 1);
+    const auto model = features::regenerate(state);
+    CHECK(model.features[0].error.find("cross") != std::string::npos);
+    CHECK(model.mesh.indices.empty());
+}
+
 TEST(regeneration_reports_failures_per_feature) {
     DocumentState state;
     auto& open = *state.sketch(add_sketch(state, SketchPlane::xy));

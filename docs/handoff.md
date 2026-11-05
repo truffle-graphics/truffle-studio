@@ -81,7 +81,8 @@ application with workspaces (CAD first) over a shared document; see ADR 0001.
   with sketches. `features/regenerate` (library `studio_features`, model +
   kernel only) turns each sketch's closed loops into profiles (a loop
   nested at odd depth is a hole of its innermost encloser; reversed arcs
-  use `kernel::Arc::reversed`) and extrudes them; failures are recorded per
+  use `kernel::Arc::reversed`; crossing loops fail the feature) and
+  extrudes them; failures are recorded per
   feature and never thrown. Separate solids are meshed side by side (no
   boolean union yet). The Model panel is a feature tree in creation order;
   "Extrude sketch" extrudes the active sketch 10 mm, selects it and fits

@@ -2,6 +2,7 @@
 
 #include "model/sketch_edit.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <exception>
 #include <numbers>
@@ -100,13 +101,20 @@ std::vector<kernel::Profile> sketch_profiles(const model::Sketch& sketch) {
         if (!ring.polygon.empty()) { rings.push_back(std::move(ring)); }
     }
     // Depth = how many other loops enclose this one; the innermost encloser
-    // is the parent. Loops of one sketch share no points, so testing one
-    // boundary point decides containment.
+    // is the parent. A loop is enclosed when all of its samples lie inside;
+    // loops that are partly inside cross, which no profile can represent.
+    const auto encloses = [&](const Ring& outer, const Ring& ring) {
+        const auto count = std::ranges::count_if(ring.polygon, [&](const auto& p) { return inside(outer.polygon, p); });
+        if (count != 0 && static_cast<std::size_t>(count) != ring.polygon.size()) {
+            throw kernel::KernelError("the sketch's closed profiles cross each other");
+        }
+        return count != 0;
+    };
     std::vector<std::size_t> depth(rings.size(), 0);
     std::vector<std::ptrdiff_t> parent(rings.size(), -1);
     for (std::size_t i = 0; i < rings.size(); ++i) {
         for (std::size_t j = 0; j < rings.size(); ++j) {
-            if (i == j || rings[j].area <= rings[i].area || !inside(rings[j].polygon, rings[i].polygon[0])) { continue; }
+            if (i == j || rings[j].area <= rings[i].area || !encloses(rings[j], rings[i])) { continue; }
             ++depth[i];
             if (parent[i] < 0 || rings[j].area < rings[static_cast<std::size_t>(parent[i])].area) {
                 parent[i] = static_cast<std::ptrdiff_t>(j);
@@ -123,7 +131,8 @@ std::vector<kernel::Profile> sketch_profiles(const model::Sketch& sketch) {
     }
     for (std::size_t i = 0; i < rings.size(); ++i) {
         if (depth[i] % 2 == 1) {
-            const auto owner = profile_of[static_cast<std::size_t>(parent[i])];
+            const auto owner = parent[i] < 0 ? -1 : profile_of[static_cast<std::size_t>(parent[i])];
+            if (owner < 0) { throw kernel::KernelError("the sketch's closed profiles cross each other"); }
             profiles[static_cast<std::size_t>(owner)].holes.push_back(rings[i].loop);
         }
     }
