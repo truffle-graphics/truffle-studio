@@ -1,7 +1,9 @@
 # Truffle Studio
 
-Truffle Studio is a graphics authoring application built on
-[Truffle](https://github.com/truffle-graphics/truffle). It is Truffle's
+Truffle Studio is a multi-purpose authoring application built on
+[Truffle](https://github.com/truffle-graphics/truffle). CAD, animation,
+simulation and design are workspaces in one application that share one
+document. The first workspace being built is sketch-based CAD. It is Truffle's
 dogfooding application: features Studio needs drive Truffle work, which is
 tracked as Truffle issues. Truffle stays a library; Studio is the application.
 

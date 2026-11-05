@@ -2,10 +2,20 @@
 
 ## Purpose
 
-Truffle Studio is an application built on Truffle. It replaces throwaway
-editor-style samples as the place where Truffle is exercised under real use.
-Long-term direction (not committed scope): a visual graphics authoring tool
-with specialized workspaces such as scenes, simplified CAD and animation.
+Truffle Studio is one multi-purpose authoring application built on Truffle.
+It replaces throwaway editor-style samples as the place where Truffle is
+exercised under real use.
+
+- **Workspaces over one document.** CAD, Animation, Simulation and Design are
+  workspaces in the same application and share one document model. Each
+  workspace supplies its own panels, tools and engine profile.
+- **CAD first.** The first complete workspace is sketch-based parametric part
+  modelling: constrained 2D sketches, then features such as extrude.
+- **Geometry.** OpenCASCADE (a source submodule) sits behind the
+  Studio-owned interface in `src/kernel`. Sketch constraints use a
+  Studio-owned solver.
+
+See [ADR 0001](docs/adr/0001-workspace-application.md).
 
 ## Boundaries
 
@@ -15,8 +25,10 @@ with specialized workspaces such as scenes, simplified CAD and animation.
 - When Studio needs something reusable from Truffle, file a Truffle issue and
   implement it there. Do not build Truffle-shaped workarounds inside Studio,
   and do not push application concepts into Truffle.
-- Truffle is a Git submodule at `external/truffle` tracking `develop`; SDL3 is
-  a submodule pinned to a release tag.
+- Truffle is a Git submodule at `external/truffle` tracking `develop`; SDL3
+  and OpenCASCADE are submodules pinned to release tags.
+- Document, workspace, sketch and solver code does not depend on Truffle or
+  OpenCASCADE. Only the kernel implementation uses OpenCASCADE types.
 
 ## Platform
 
