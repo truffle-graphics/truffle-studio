@@ -8,7 +8,8 @@ add_executable(truffle_studio
     host/sdl_window.cpp
     host/system_font.mm
     studio/app.cpp
-    studio/workspace.cpp)
+    studio/shell.cpp
+    studio/cad/cad_workspace.cpp)
 target_include_directories(truffle_studio PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(truffle_studio PRIVATE
     studio_model Truffle::GUIDock Truffle::GUI Truffle::Renderer Truffle::BackendMetal SDL3::SDL3-static

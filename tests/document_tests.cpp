@@ -115,3 +115,13 @@ TEST(document_allocates_unique_ids) {
     document.edit("again", [&](DocumentState& state) { c = Document::allocate(state); });
     CHECK(c == a);
 }
+
+TEST(document_unsubscribe_stops_notifications) {
+    Document document;
+    int heard = 0;
+    const auto token = document.subscribe([&] { ++heard; });
+    document.edit("a", [](DocumentState& state) { state.name = "a"; });
+    document.unsubscribe(token);
+    document.edit("b", [](DocumentState& state) { state.name = "b"; });
+    CHECK(heard == 1);
+}

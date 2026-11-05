@@ -3,7 +3,8 @@
 #include "host/sdl_window.hpp"
 #include "host/system_font.hpp"
 #include "studio/check.hpp"
-#include "studio/workspace.hpp"
+#include "studio/cad/cad_workspace.hpp"
+#include "studio/shell.hpp"
 
 #include "truffle/gui/painter.hpp"
 #include "truffle/renderer/frame_stream.hpp"
@@ -12,6 +13,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -65,6 +67,7 @@ public:
     Presenter& operator=(const Presenter&) = delete;
 
     gui::Painter& painter() noexcept { return painter_; }
+    void set_clear(std::array<float, 4> clear) noexcept { clear_ = clear; }
     std::size_t frames() const noexcept { return frames_; }
 
     void draw(gui::Context& context, rhi::Extent2D extent) {
@@ -76,7 +79,7 @@ public:
         auto batches = need(painter_.record(context, slot, extent));
         renderer::FrameGraph graph;
         graph.add_node(std::make_unique<renderer::RenderPassNode>(
-            rhi::RenderPassDesc{.colorAttachments = {{.clear = {0.05F, 0.05F, 0.06F, 1}}}},
+            rhi::RenderPassDesc{.colorAttachments = {{.clear = {clear_[0], clear_[1], clear_[2], clear_[3]}}}},
             std::move(batches), true));
         const auto status = renderer_.render(graph, &swapchain_, pacer_.signal());
         pacer_.end_frame(renderer_.last_frame_stats().submitted);
@@ -98,6 +101,21 @@ private:
     renderer::FramePacer pacer_;
     gui::Painter painter_;
     std::size_t frames_ = 0;
+    std::array<float, 4> clear_{0.05F, 0.05F, 0.06F, 1};
+};
+
+// A second workspace used only by the smoke test to exercise switching.
+class ProbeWorkspace final : public Workspace {
+public:
+    std::string_view id() const noexcept override { return "probe"; }
+    std::string_view title() const noexcept override { return "Probe"; }
+    EngineProfile profile() const override {
+        return {.name = "Probe", .clear = {0.2F, 0.1F, 0.1F, 1}, .continuous = true};
+    }
+    void build(WorkspaceServices& services, gui::dock::DockSpace& space) override {
+        need(space.add_panel("notes", "Notes", services.ui.column(8)));
+        need(space.set_layout(gui::dock::DockNode::tabs({"notes"})));
+    }
 };
 
 void push_click(const SdlWindow& window, gui::Point at) {
@@ -160,8 +178,15 @@ int run(const AppOptions& options) {
     const auto font = load_system_font(text, 13);
     const auto atlas = need(presenter.painter().add_texture(need(text.atlas_texture()).get()));
     model::Document document;
-    Workspace workspace(document, text, font, atlas);
-    auto& context = workspace.context;
+    Shell shell(document, text, font, atlas);
+    shell.add(std::make_unique<cad::CadWorkspace>());
+    shell.add(std::make_unique<PlannedWorkspace>("animation", "Animation"));
+    shell.add(std::make_unique<PlannedWorkspace>("simulation", "Simulation"));
+    shell.add(std::make_unique<PlannedWorkspace>("design", "Design"));
+    if (options.smoke) { shell.add(std::make_unique<ProbeWorkspace>()); }
+    shell.activate("cad");
+    auto& context = shell.context;
+    std::string profile;
     context.set_host(&window);
 
     bool running = true;
@@ -178,11 +203,11 @@ int run(const AppOptions& options) {
         if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) { context.request_frame(); }
         if (event.type == SDL_EVENT_KEY_DOWN && event.key.windowID == window.id() &&
             event.key.key == SDLK_Z && (event.key.mod & SDL_KMOD_GUI) != 0 &&
-            !workspace.text_editing()) {
+            !shell.text_editing()) {
             if ((event.key.mod & SDL_KMOD_SHIFT) != 0) {
-                workspace.redo();
+                shell.redo();
             } else {
-                workspace.undo();
+                shell.undo();
             }
             return;
         }
@@ -207,7 +232,13 @@ int run(const AppOptions& options) {
             dispatch(event);
             while (SDL_PollEvent(&event)) { dispatch(event); }
         }
-        workspace.update();
+        shell.update();
+        if (shell.active() && shell.active()->profile().name != profile) {
+            const auto applied = shell.active()->profile();
+            profile = applied.name;
+            presenter.set_clear(applied.clear);
+            context.request_frame();
+        }
         const auto metrics = window.metrics();
         if (!metrics) { return; }
         need(context.set_viewport(metrics->logical, metrics->scale));
@@ -230,52 +261,66 @@ int run(const AppOptions& options) {
         expect(presenter.frames() == idle, "an idle GUI kept drawing");
 
         namespace dock = gui::dock;
-        expect(dock::panel_ids(workspace.dock.layout()).size() == 3, "workspace panels are missing");
+        auto* cad_space = dynamic_cast<cad::CadWorkspace*>(shell.active());
+        expect(cad_space != nullptr, "Studio did not open in the CAD workspace");
+        expect(profile == "CAD", "the CAD engine profile was not applied");
+        expect(dock::panel_ids(shell.dock.layout()).size() == 3, "CAD panels are missing");
 
-        push_click(window, center(context, workspace.visible.element()));
+        push_click(window, center(context, shell.switcher("animation").element()));
         settle();
-        expect(!need(workspace.visible.checked()), "SDL pointer input did not toggle the checkbox");
-        expect(need(workspace.status.text()) == "Cube hidden", "the status line did not update");
-        expect(presenter.frames() > idle, "the property change was not drawn");
+        expect(shell.active() == cad_space, "a planned workspace became active");
 
-        push_click(window, center(context, workspace.name.element()));
+        push_click(window, center(context, cad_space->part_name.element()));
         settle();
         expect(window.text_input_active(), "focusing the editor did not start text input");
         push_text(window, true, "\xE3\x81\x8B"); // か, still composing
         settle();
-        expect(need(workspace.name.text()) == "Untitled", "composition changed committed text");
+        expect(need(cad_space->part_name.text()) == "Untitled", "composition changed committed text");
         push_text(window, false, "\xE6\x97\xA5\xE6\x9C\xAC"); // 日本
         settle();
-        const auto edited = need(workspace.name.text());
+        const auto edited = need(cad_space->part_name.text());
         expect(edited.find("\xE6\x97\xA5\xE6\x9C\xAC") != std::string::npos,
                "committed IME text did not reach the editor");
         expect(edited.find("\xE3\x81\x8B") == std::string::npos, "preedit text was committed");
-        expect(need(workspace.status.text()) == "Name: " + edited, "name edits were not reported");
         expect(document.state().name == edited, "the name edit did not reach the document");
+        expect(presenter.frames() > idle, "the edit was not drawn");
 
         push_shortcut(window, SDLK_Z, SDL_KMOD_GUI);
         settle();
         expect(document.state().name == edited, "Cmd+Z undid the document while a text field was focused");
-        push_click(window, center(context, workspace.undo_button.element()));
+        push_click(window, center(context, shell.undo_button.element()));
         settle();
         expect(document.state().name == "Untitled", "Undo did not revert the rename");
-        expect(need(workspace.name.text()) == "Untitled", "the editor did not follow undo");
+        expect(need(cad_space->part_name.text()) == "Untitled", "the editor did not follow undo");
         push_shortcut(window, SDLK_Z, static_cast<SDL_Keymod>(SDL_KMOD_GUI | SDL_KMOD_SHIFT));
         settle();
         expect(document.state().name == edited, "Shift+Cmd+Z did not redo the rename");
-        expect(need(workspace.status.text()) == "Redo Rename", "redo was not reported");
+        expect(need(shell.status.text()) == "Redo Rename part", "redo was not reported");
 
-        need(workspace.dock.dock("properties", "scene", dock::DropSide::center));
+        need(shell.dock.dock("inspector", "model", dock::DropSide::center));
         settle();
-        const auto moved = workspace.dock.save();
-        expect(moved != workspace.default_layout, "docking a panel did not change the layout");
-        need(workspace.dock.restore(workspace.default_layout));
-        need(workspace.dock.restore(moved));
-        expect(workspace.dock.save() == moved, "the layout did not round-trip");
-        push_click(window, center(context, workspace.reset_layout.element()));
+        const auto moved = shell.dock.save();
+        expect(moved != shell.default_layout(), "docking a panel did not change the layout");
+        need(shell.dock.restore(shell.default_layout()));
+        need(shell.dock.restore(moved));
+        expect(shell.dock.save() == moved, "the layout did not round-trip");
+
+        push_click(window, center(context, shell.switcher("probe").element()));
         settle();
-        expect(workspace.dock.save() == workspace.default_layout, "Reset layout did not restore");
-        expect(need(workspace.status.text()) == "Layout reset", "the reset was not reported");
+        expect(shell.active() && shell.active()->id() == "probe", "switching workspace failed");
+        expect(profile == "Probe", "the engine profile did not follow the workspace");
+        expect(!cad_space->part_name.alive(), "CAD panels survived the switch");
+        expect(document.state().name == edited, "switching workspace lost document state");
+        push_click(window, center(context, shell.switcher("cad").element()));
+        settle();
+        expect(shell.active() == cad_space && profile == "CAD", "switching back to CAD failed");
+        expect(shell.dock.save() == moved, "the CAD layout was not kept across switches");
+        expect(need(cad_space->part_name.text()) == edited, "the rebuilt editor lost the name");
+
+        push_click(window, center(context, shell.reset_layout.element()));
+        settle();
+        expect(shell.dock.save() == shell.default_layout(), "Reset layout did not restore");
+        expect(need(shell.status.text()) == "Layout reset", "the reset was not reported");
         std::cout << "studio smoke: frames=" << presenter.frames() << " name=" << edited << '\n';
     }
     context.set_host(nullptr);

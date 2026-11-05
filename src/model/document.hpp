@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace studio::model {
@@ -59,7 +60,14 @@ public:
     // Allocates an object id inside an edit.
     static ObjectId allocate(DocumentState& state) { return state.next_id++; }
 
-    void subscribe(Listener listener) { listeners_.push_back(std::move(listener)); }
+    // Returns a token for unsubscribe().
+    std::uint64_t subscribe(Listener listener) {
+        listeners_.push_back({++last_token_, std::move(listener)});
+        return last_token_;
+    }
+    void unsubscribe(std::uint64_t token) {
+        std::erase_if(listeners_, [&](const auto& entry) { return entry.first == token; });
+    }
 
 private:
     bool finish(bool changed_state) {
@@ -68,11 +76,14 @@ private:
     }
     void changed() {
         ++revision_;
-        for (const auto& listener : listeners_) { listener(); }
+        // Listeners may unsubscribe while being notified.
+        const auto listeners = listeners_;
+        for (const auto& [token, listener] : listeners) { listener(); }
     }
 
     UndoHistory<DocumentState> history_;
-    std::vector<Listener> listeners_;
+    std::vector<std::pair<std::uint64_t, Listener>> listeners_;
+    std::uint64_t last_token_ = 0;
     std::uint64_t revision_ = 0;
 };
 

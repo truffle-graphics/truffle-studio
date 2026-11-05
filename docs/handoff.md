@@ -14,10 +14,20 @@ application with workspaces (CAD first) over a shared document; see ADR 0001.
   The app owns one `Document`; toolbar Undo/Redo and Cmd+Z / Shift+Cmd+Z
   (ignored while a text field is focused) drive it. `tests/` holds a small
   harness; `ctest --preset strict` runs `studio_unit` and the smoke test.
+- #9 workspaces: `studio/shell` owns the top bar (workspace switcher,
+  Undo/Redo, Reset layout), the active workspace's dock and the status line.
+  `studio/workspace.hpp` defines `Workspace` (panels built into a fresh
+  dock on activation, torn down on switch, layout kept per workspace) and
+  `EngineProfile` (clear colour, depth, continuous redraw; the app applies
+  it on switch). `studio/cad/cad_workspace` is the real workspace (Model,
+  Viewport, Inspector with part name); Animation, Simulation and Design are
+  disabled `PlannedWorkspace` entries. The old Scene/Viewport/Properties
+  placeholder UI is gone. Smoke registers a `Probe` workspace to test
+  switching, profile changes and layout retention.
 
 ## Next
 
-#9 workspace switcher, #10 OpenCASCADE and the
+#10 OpenCASCADE and the
 kernel, #11 sketch editor, #12 constraint solver, #13 3D viewport, #14
 extrude and regeneration.
 
