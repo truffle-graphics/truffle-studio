@@ -25,6 +25,7 @@
     {"name": "strict", "configurePreset": "strict"}
   ],
   "testPresets": [
-    {"name": "dev", "configurePreset": "dev", "output": {"outputOnFailure": true}}
+    {"name": "dev", "configurePreset": "dev", "output": {"outputOnFailure": true}},
+    {"name": "strict", "configurePreset": "strict", "output": {"outputOnFailure": true}}
   ]
 }

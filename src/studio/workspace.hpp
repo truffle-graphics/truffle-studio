@@ -1,45 +1,78 @@
 #pragma once
 
-#include "truffle/gui/dock/dock.hpp"
-#include "truffle/gui/text.hpp"
-#include "truffle/gui/widgets.hpp"
+#include "model/document.hpp"
+#include "studio/ui.hpp"
 
+#include "truffle/gui/dock/dock.hpp"
+
+#include <array>
+#include <functional>
 #include <string>
+#include <string_view>
 
 namespace studio {
 
-// The Studio GUI: a toolbar, a dock of workspace panels and a status line.
-// Owns the Context; panel contents are placeholders until Truffle provides
-// the scene and 3D viewport capabilities they need.
+class SceneView;
+
+// How the engine is configured while a workspace is active. Each workspace
+// states what it is optimised for; the app applies the profile on switch.
+struct EngineProfile {
+    std::string name;
+    std::array<float, 4> clear{0.05F, 0.05F, 0.06F, 1};
+    bool depth = false;      // the workspace renders 3D content
+    bool continuous = false; // redraw every frame (playback, simulation)
+};
+
+// What the shell gives a workspace while it is active.
+struct WorkspaceServices {
+    Ui ui;
+    model::Document& document;
+    std::function<void(std::string)> report;
+    SceneView* scene = nullptr; // offscreen 3D rendering; null without a GPU
+};
+
+// A mode of the application over the shared document. The shell builds the
+// active workspace's panels into a fresh dock and tears them down on switch;
+// document state lives in the Document, never in panels.
 class Workspace {
 public:
-    Workspace(truffle::gui::TextEngine& text, truffle::gui::FontId font,
-              truffle::gui::TextureId atlas);
-    ~Workspace();
+    Workspace() = default;
     Workspace(const Workspace&) = delete;
     Workspace& operator=(const Workspace&) = delete;
+    virtual ~Workspace() = default;
 
-    // Applies requests deferred out of input handlers. Call once per loop turn.
-    void update();
+    virtual std::string_view id() const noexcept = 0;
+    virtual std::string_view title() const noexcept = 0;
+    virtual bool available() const noexcept { return true; }
+    virtual EngineProfile profile() const = 0;
 
-    truffle::gui::Context context;
-    truffle::gui::dock::DockSpace dock;
-    truffle::gui::Widget reset_layout;
-    truffle::gui::Widget status;
-    truffle::gui::Widget name;
-    truffle::gui::Widget visible;
-    truffle::gui::Widget opacity;
-    std::string default_layout;
+    // Creates panels, adds them to `dock` and sets its default layout.
+    virtual void build(WorkspaceServices& services, truffle::gui::dock::DockSpace& dock) = 0;
+    // Called before the dock is destroyed; drop widget handles here.
+    virtual void teardown() {}
+    // Once per loop turn, outside input dispatch.
+    virtual void update() {}
+    // After layout, before the frame is recorded: may request 3D passes and
+    // update decorations that depend on element sizes.
+    virtual void before_frame() {}
+    // True while a workspace text field owns keyboard editing shortcuts.
+    virtual bool text_editing(const truffle::gui::Context&) const { return false; }
+};
+
+// A workspace that is planned but not built yet; shown disabled.
+class PlannedWorkspace final : public Workspace {
+public:
+    PlannedWorkspace(std::string id, std::string title)
+        : id_(std::move(id)), title_(std::move(title)) {}
+    std::string_view id() const noexcept override { return id_; }
+    std::string_view title() const noexcept override { return title_; }
+    bool available() const noexcept override { return false; }
+    EngineProfile profile() const override { return {.name = title_}; }
+    void build(WorkspaceServices&, truffle::gui::dock::DockSpace&) override {}
 
 private:
-    truffle::gui::Widget label(truffle::gui::ElementId parent, std::string text);
-    truffle::gui::ElementId panel(float padding);
-    void report(std::string message);
-
-    truffle::gui::TextEngine& text_;
-    truffle::gui::FontId font_;
-    truffle::gui::TextureId atlas_;
-    bool reset_requested_ = false;
+    std::string id_;
+    std::string title_;
 };
 
 } // namespace studio
