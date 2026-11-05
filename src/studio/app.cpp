@@ -229,10 +229,10 @@ int run(const AppOptions& options) {
     model::Document document;
     Shell shell(document, text, font, atlas, &scene);
     shell.add(std::make_unique<cad::CadWorkspace>());
-    shell.add(std::make_unique<PlannedWorkspace>("animation", "Animation"));
-    shell.add(std::make_unique<PlannedWorkspace>("simulation", "Simulation"));
-    shell.add(std::make_unique<PlannedWorkspace>("design", "Design"));
-    if (options.smoke) { shell.add(std::make_unique<ProbeWorkspace>()); }
+    if (options.smoke) {
+        shell.add(std::make_unique<PlannedWorkspace>("unavailable", "Unavailable"));
+        shell.add(std::make_unique<ProbeWorkspace>());
+    }
     shell.activate("cad");
     auto& context = shell.context;
     std::string profile;
@@ -313,10 +313,13 @@ int run(const AppOptions& options) {
         namespace dock = gui::dock;
         auto* cad_space = dynamic_cast<cad::CadWorkspace*>(shell.active());
         expect(cad_space != nullptr, "Studio did not open in the CAD workspace");
+        expect(need(shell.switcher("cad").text()) == "CAD", "the CAD workspace was not labelled CAD");
+        expect(!shell.find("animation") && !shell.find("simulation") && !shell.find("design"),
+               "an unconfirmed future workspace was registered");
         expect(profile == "CAD", "the CAD engine profile was not applied");
         expect(dock::panel_ids(shell.dock.layout()).size() == 3, "CAD panels are missing");
 
-        push_click(window, center(context, shell.switcher("animation").element()));
+        push_click(window, center(context, shell.switcher("unavailable").element()));
         settle();
         expect(shell.active() == cad_space, "a planned workspace became active");
 

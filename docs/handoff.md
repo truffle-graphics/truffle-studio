@@ -2,8 +2,9 @@
 
 ## Current state
 
-Milestone 1 (#6) is in progress on `feat/cad-sketch-workspace`. Studio is one
-application with workspaces (CAD first) over a shared document; see ADR 0001.
+Milestone 1 (#6) is complete and merged via PR #15. CAD is the only
+implemented workspace. Optional installation of future workspaces and data
+sharing between them are planned, not implemented; see ADR 0001.
 
 - #7 product direction: PROJECT_CONTEXT, README and ADR 0001 record the
   workspace model, sketch-based CAD, OpenCASCADE behind `src/kernel`, and the
@@ -19,11 +20,11 @@ application with workspaces (CAD first) over a shared document; see ADR 0001.
   `studio/workspace.hpp` defines `Workspace` (panels built into a fresh
   dock on activation, torn down on switch, layout kept per workspace) and
   `EngineProfile` (clear colour, depth, continuous redraw; the app applies
-  it on switch). `studio/cad/cad_workspace` is the real workspace (Model,
-  Viewport, Inspector with part name); Animation, Simulation and Design are
-  disabled `PlannedWorkspace` entries. The old Scene/Viewport/Properties
-  placeholder UI is gone. Smoke registers a `Probe` workspace to test
-  switching, profile changes and layout retention.
+  the clear colour on switch). `studio/cad/cad_workspace` is the CAD
+  workspace (Model, Viewport, Inspector with part name); the normal app
+  registers no other workspaces. Smoke registers an unavailable workspace
+  and a `Probe` workspace to test disabled entries, switching, profile
+  selection and layout retention.
 - #10 kernel: `external/occt` (V8_0_1, shallow) builds through
   `cmake/StudioOcct.cmake` as an ExternalProject (Release, shared, only
   TKPrim/TKMesh/TKBO and dependencies; about 2 minutes clean) into
@@ -94,9 +95,9 @@ application with workspaces (CAD first) over a shared document; see ADR 0001.
 
 ## Next
 
-Milestone #6 complete: open the batch PR for `feat/cad-sketch-workspace`.
-Then plan the next CAD milestone (booleans between features, sketch on a
-face, save/load).
+Plan the next CAD milestone (booleans between features, sketch on a face,
+save/load). Design optional workspace installation and cross-workspace data
+sharing separately when needed.
 
 ## Risks
 

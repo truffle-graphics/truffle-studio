@@ -6,11 +6,16 @@ Truffle Studio is one multi-purpose authoring application built on Truffle.
 It replaces throwaway editor-style samples as the place where Truffle is
 exercised under real use.
 
-- **Workspaces over one document.** CAD, Animation, Simulation and Design are
-  workspaces in the same application and share one document model. Each
-  workspace supplies its own panels, tools and engine profile.
-- **CAD first.** The first complete workspace is sketch-based parametric part
-  modelling: constrained 2D sketches, then features such as extrude.
+- **Workspace model.** Studio is one application with independently useful
+  workspaces. CAD is the only implemented workspace and the focus for the
+  foreseeable future. A future 3D content-creation workspace, including
+  animation and rendering, has not yet been named.
+- **Optional workspaces.** Users should be able to install only the workspaces
+  they want and add others later. Packaging, installation and loading are
+  undecided and not implemented. Sharing data between installed workspaces is
+  a future goal, not a required workflow.
+- **CAD.** Sketch-based parametric part modelling uses constrained 2D sketches
+  and features such as extrude.
 - **Geometry.** OpenCASCADE (a source submodule) sits behind the
   Studio-owned interface in `src/kernel`. Sketch constraints use a
   Studio-owned solver.
