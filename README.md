@@ -1,11 +1,15 @@
 # Truffle Studio
 
 Truffle Studio is a multi-purpose authoring application built on
-[Truffle](https://github.com/truffle-graphics/truffle). CAD, animation,
-simulation and design are workspaces in one application that share one
-document. The first workspace being built is sketch-based CAD. It is Truffle's
-dogfooding application: features Studio needs drive Truffle work, which is
-tracked as Truffle issues. Truffle stays a library; Studio is the application.
+[Truffle](https://github.com/truffle-graphics/truffle). CAD is the only
+implemented workspace, focused on sketch-based parametric part modelling.
+Future workspaces are intended to be optional and independently useful, with
+data sharing between them as a future goal. Workspace installation and
+integration mechanisms are not yet decided or implemented.
+
+Studio is Truffle's dogfooding application: features Studio needs drive Truffle
+work, which is tracked as Truffle issues. Truffle stays a library; Studio is
+the application.
 
 Status: early foundation. macOS (Apple Silicon) with Metal only.
 
