@@ -1,0 +1,30 @@
+{
+  "version": 4,
+  "cmakeMinimumRequired": {"major": 3, "minor": 23, "patch": 0},
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Developer build",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "strict",
+      "displayName": "Warnings as errors",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build/strict",
+      "cacheVariables": {"STUDIO_WARNINGS_AS_ERRORS": "ON"}
+    }
+  ],
+  "buildPresets": [
+    {"name": "dev", "configurePreset": "dev"},
+    {"name": "strict", "configurePreset": "strict"}
+  ],
+  "testPresets": [
+    {"name": "dev", "configurePreset": "dev", "output": {"outputOnFailure": true}}
+  ]
+}
