@@ -1,6 +1,7 @@
 #pragma once
 
 #include "model/history.hpp"
+#include "model/sketch.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -10,16 +11,24 @@
 
 namespace studio::model {
 
-// Stable identity for document objects; 0 is never assigned.
-using ObjectId = std::uint64_t;
-
 // Everything a document contains. Workspaces read and edit this state; it
 // has no dependency on Truffle or the geometry kernel.
 struct DocumentState {
     std::string name = "Untitled";
     ObjectId next_id = 1;
+    std::vector<Sketch> sketches;
 
     bool operator==(const DocumentState&) const = default;
+
+    const Sketch* sketch(ObjectId id) const noexcept {
+        for (const auto& s : sketches) {
+            if (s.id == id) { return &s; }
+        }
+        return nullptr;
+    }
+    Sketch* sketch(ObjectId id) noexcept {
+        return const_cast<Sketch*>(static_cast<const DocumentState&>(*this).sketch(id));
+    }
 };
 
 // The shared document: state, undo history and change notification.

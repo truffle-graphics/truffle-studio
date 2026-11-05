@@ -12,7 +12,7 @@ application with workspaces (CAD first) over a shared document; see ADR 0001.
   (snapshot undo, grouped/nested edits, cancel) and `Document` (state,
   edit/begin/update/commit, undo/redo, change listeners, id allocation).
   The app owns one `Document`; toolbar Undo/Redo and Cmd+Z / Shift+Cmd+Z
-  (ignored while a text field is focused) drive it. `tests/` holds a small
+  drive it (a focused text field keeps them for its own text undo). `tests/` holds a small
   harness; `ctest --preset strict` runs `studio_unit` and the smoke test.
 - #9 workspaces: `studio/shell` owns the top bar (workspace switcher,
   Undo/Redo, Reset layout), the active workspace's dock and the status line.
@@ -33,10 +33,23 @@ application with workspaces (CAD first) over a shared document; see ADR 0001.
   it, normalising loop winding and uniting multiple profiles. Seven kernel
   tests cover volumes, winding, tolerance, arcs/holes, planes, open-profile
   rejection and unions.
+- #11 sketching: `model/sketch.hpp` (sketches on XY/XZ/YZ with points,
+  lines, CCW arcs and circles sharing endpoints by id) lives in
+  `DocumentState::sketches`; `model/sketch_edit.hpp` adds sketches, shared
+  points, curves, rectangles, removal with orphan cleanup and `find_loops`
+  (simple closed loops; branching/dangling chains count as open).
+  `studio/cad/sketch_editor` is the viewport canvas (Truffle `CanvasBuilder`):
+  1-2-5 grid with coloured axes, right/middle-drag pan, wheel zoom about the
+  cursor, snapping to points then grid, Select/Line (chained, closes on the
+  first point)/Rectangle/Circle/Arc tools (buttons or S/L/R/C/A), Esc,
+  Backspace/Delete. Each drawn shape is one undo step; drawing with no
+  sketch creates one on XY. The Model panel lists sketches (rebuilt in
+  `update()`, never during a click) with New sketch on XY/XZ/YZ; the
+  Inspector shows curve, point and profile counts.
 
 ## Next
 
-#11 sketch editor, #12 constraint solver, #13 3D viewport, #14
+#12 constraint solver, #13 3D viewport, #14
 extrude and regeneration.
 
 ## Risks

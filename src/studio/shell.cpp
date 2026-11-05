@@ -11,16 +11,6 @@ namespace {
 constexpr gui::Color active_accent{0.24F, 0.45F, 0.85F, 1};
 constexpr gui::Color no_fill{0, 0, 0, 0};
 
-gui::ElementId row(gui::Context& context, gui::ElementId parent, float spacing,
-                   gui::Edges padding = {}) {
-    const auto element = need(context.create(parent));
-    need(context.set_layout(element, std::make_shared<gui::StackLayout>(
-        gui::StackOptions{.axis = gui::Axis::horizontal, .spacing = spacing})));
-    gui::LayoutParams params;
-    params.padding = padding;
-    need(context.set_layout_params(element, params));
-    return element;
-}
 } // namespace
 
 Shell::Shell(model::Document& document, gui::TextEngine& text, gui::FontId font,
@@ -31,11 +21,11 @@ Shell::Shell(model::Document& document, gui::TextEngine& text, gui::FontId font,
     need(context.set_layout(root, std::make_shared<gui::StackLayout>()));
     need(context.set_decoration(root, {.fill = {0.07F, 0.07F, 0.08F, 1}}));
 
-    const auto bar = row(context, root, 16, {10, 6, 10, 6});
+    const auto bar = ui_.row(root, 16, {10, 6, 10, 6});
     need(context.set_decoration(bar, {.fill = {0.10F, 0.10F, 0.11F, 1}}));
     static_cast<void>(ui_.label(bar, "Truffle Studio"));
-    switcher_bar_ = row(context, bar, 4);
-    const auto commands = row(context, bar, 8);
+    switcher_bar_ = ui_.row(bar, 4);
+    const auto commands = ui_.row(bar, 8);
     undo_button = ui_.button(commands, "Undo", [this] { undo(); });
     redo_button = ui_.button(commands, "Redo", [this] { redo(); });
     // Restoring reparents panels, so it waits until input dispatch ends.
@@ -60,7 +50,7 @@ Shell::~Shell() { close_active(); }
 
 void Shell::add(std::unique_ptr<Workspace> workspace) {
     Entry added;
-    added.highlight = row(context, switcher_bar_, 0, {2, 2, 2, 2});
+    added.highlight = ui_.row(switcher_bar_, 0, {2, 2, 2, 2});
     const std::string id(workspace->id());
     std::string title(workspace->title());
     if (!workspace->available()) { title += " (planned)"; }

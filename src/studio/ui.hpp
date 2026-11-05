@@ -32,6 +32,17 @@ struct Ui {
         return widget(parent, {.kind = truffle::gui::WidgetKind::button, .text = std::move(value),
                                .activated = std::move(activated)});
     }
+    // A horizontal stack under `parent`.
+    truffle::gui::ElementId row(truffle::gui::ElementId parent, float spacing,
+                                truffle::gui::Edges padding = {}) const {
+        const auto element = need(context.create(parent));
+        need(context.set_layout(element, std::make_shared<truffle::gui::StackLayout>(
+            truffle::gui::StackOptions{.axis = truffle::gui::Axis::horizontal, .spacing = spacing})));
+        truffle::gui::LayoutParams params;
+        params.padding = padding;
+        need(context.set_layout_params(element, params));
+        return element;
+    }
     // A vertical stack, created under the root for handing to a dock.
     truffle::gui::ElementId column(float padding, float spacing = 8) const {
         const auto element = need(context.create(context.root()));

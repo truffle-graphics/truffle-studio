@@ -3,6 +3,7 @@
 #include "host/sdl_window.hpp"
 #include "host/system_font.hpp"
 #include "studio/check.hpp"
+#include "model/sketch_edit.hpp"
 #include "studio/cad/cad_workspace.hpp"
 #include "studio/shell.hpp"
 
@@ -153,6 +154,7 @@ void push_shortcut(const SdlWindow& window, SDL_Keycode key, SDL_Keymod mod) {
     event.type = SDL_EVENT_KEY_DOWN;
     event.key.windowID = window.id();
     event.key.key = key;
+    event.key.scancode = SDL_GetScancodeFromKey(key, nullptr);
     event.key.mod = mod;
     event.key.down = true;
     SDL_PushEvent(&event);
@@ -285,9 +287,15 @@ int run(const AppOptions& options) {
         expect(document.state().name == edited, "the name edit did not reach the document");
         expect(presenter.frames() > idle, "the edit was not drawn");
 
+        // In a focused text field the shortcuts edit the field's own text.
         push_shortcut(window, SDLK_Z, SDL_KMOD_GUI);
         settle();
-        expect(document.state().name == edited, "Cmd+Z undid the document while a text field was focused");
+        expect(need(cad_space->part_name.text()) != edited, "Cmd+Z did not undo typing in the text field");
+        expect(document.state().name == need(cad_space->part_name.text()), "the field undo did not reach the document");
+        push_shortcut(window, SDLK_Z, static_cast<SDL_Keymod>(SDL_KMOD_GUI | SDL_KMOD_SHIFT));
+        settle();
+        expect(need(cad_space->part_name.text()) == edited && document.state().name == edited,
+               "Shift+Cmd+Z did not redo typing in the text field");
         push_click(window, center(context, shell.undo_button.element()));
         settle();
         expect(document.state().name == "Untitled", "Undo did not revert the rename");
@@ -321,6 +329,47 @@ int run(const AppOptions& options) {
         settle();
         expect(shell.dock.save() == shell.default_layout(), "Reset layout did not restore");
         expect(need(shell.status.text()) == "Layout reset", "the reset was not reported");
+        // Sketching: draw, close profiles, select, delete and undo.
+        using Tool = cad::SketchEditor::Tool;
+        auto& editor = cad_space->editor;
+        const auto sketch = [&]() -> const model::Sketch* { return document.state().sketch(editor.sketch()); };
+        expect(document.state().sketches.empty(), "a new document already had sketches");
+        push_click(window, center(context, editor.tool_button(Tool::rectangle).element()));
+        settle();
+        expect(editor.tool() == Tool::rectangle, "the Rectangle tool button did nothing");
+        push_click(window, editor.to_window({-20, -10}));
+        push_click(window, editor.to_window({20, 10}));
+        settle();
+        expect(sketch() && sketch()->lines.size() == 4, "drawing a rectangle did not add four lines");
+        expect(model::find_loops(*sketch()).closed.size() == 1, "the rectangle is not a closed profile");
+        expect(cad_space->sketch_buttons.size() == 1, "the sketch list did not show the new sketch");
+        push_shortcut(window, SDLK_C, SDL_KMOD_NONE);
+        settle();
+        expect(editor.tool() == Tool::circle, "the C shortcut did not pick the Circle tool");
+        push_click(window, editor.to_window({0, 0}));
+        push_click(window, editor.to_window({5, 0}));
+        settle();
+        expect(sketch()->circles.size() == 1 && model::find_loops(*sketch()).closed.size() == 2,
+               "drawing a circle did not add a second profile");
+        const auto circle = sketch()->circles[0].id;
+        push_shortcut(window, SDLK_S, SDL_KMOD_NONE);
+        push_click(window, editor.to_window({0, 5}));
+        settle();
+        expect(editor.selection() == circle, "clicking the circle did not select it");
+        push_shortcut(window, SDLK_BACKSPACE, SDL_KMOD_NONE);
+        settle();
+        expect(sketch()->circles.empty() && editor.selection() == 0, "Backspace did not delete the circle");
+        push_shortcut(window, SDLK_Z, SDL_KMOD_GUI);
+        settle();
+        expect(sketch()->circles.size() == 1, "Cmd+Z did not restore the deleted circle");
+        for (int i = 0; i < 2; ++i) { push_shortcut(window, SDLK_Z, SDL_KMOD_GUI); }
+        settle();
+        expect(document.state().sketches.empty() && editor.sketch() == 0 && cad_space->sketch_buttons.empty(),
+               "undoing the first drawing did not remove its sketch");
+        push_click(window, center(context, cad_space->new_sketch.element()));
+        settle();
+        expect(document.state().sketches.size() == 1 && editor.sketch() == document.state().sketches[0].id,
+               "New sketch did not create and activate a sketch");
         std::cout << "studio smoke: frames=" << presenter.frames() << " name=" << edited << '\n';
     }
     context.set_host(nullptr);
