@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <memory>
 #include <numbers>
+#include <variant>
 
 namespace studio::cad {
 namespace gui = truffle::gui;
@@ -116,6 +117,7 @@ void SketchEditor::build(WorkspaceServices& services, gui::ElementId parent) {
 }
 
 void SketchEditor::teardown() {
+    if (services_ && dragging_) { services_->document.cancel(); }
     services_ = nullptr;
     canvas_ = {};
     tool_buttons_.clear();
@@ -399,6 +401,12 @@ void SketchEditor::handle(gui::Context& context, gui::RoutedEvent& event) {
     if (const auto* pointer = event.input<gui::PointerEvent>()) {
         switch (pointer->action) {
         case gui::PointerAction::down:
+            // One gesture at a time: a second button must not take over or
+            // release the capture an ongoing drag or pan depends on.
+            if (dragging_ || pan_from_) {
+                event.prevent_default();
+                break;
+            }
             if (pointer->button == gui::PointerButton::primary) {
                 static_cast<void>(context.focus(canvas_));
                 if (tool_ != Tool::select) {
@@ -461,6 +469,14 @@ void SketchEditor::handle(gui::Context& context, gui::RoutedEvent& event) {
             redraw();
             break;
         }
+    } else if (std::holds_alternative<gui::CaptureLostEvent>(event.payload)) {
+        // Keep what was dragged so far; the transaction must not stay open.
+        if (dragging_) {
+            dragging_ = 0;
+            if (services_->document.commit()) { services_->report("Moved point"); }
+        }
+        pan_from_.reset();
+        redraw();
     } else if (const auto* wheel = event.input<gui::WheelEvent>()) {
         // Zoom about the cursor: the sketch point under it stays put.
         const auto before = to_sketch(wheel->position);
