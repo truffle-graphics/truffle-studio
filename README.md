@@ -32,27 +32,60 @@ Truffle/
 ```sh
 git clone https://github.com/truffle-graphics/truffle-studio.git
 cd truffle-studio
-git submodule update --init external/truffle external/SDL external/occt
-git -C external/truffle submodule update --init \
-    vendor/freetype vendor/harfbuzz vendor/sheenbidi vendor/utf8proc
+./setup.sh
 ```
 
-Only the Truffle vendor submodules needed for GUI text are required; do not
-use `--recursive`, which fetches Truffle's optional shader toolchains.
+Setup checks Git, CMake 3.23+, Ninja and Xcode command-line tools, and prepares
+the pinned Studio submodules and only the Truffle vendor submodules needed for
+GUI text. It does not use `--recursive` or fetch optional shader toolchains.
+Missing tools are installed only after confirmation through existing Homebrew
+or Apple's command-line-tools installer. Homebrew itself is not bootstrapped.
+Finish any graphical installer before rerunning setup. `./setup.sh --check`
+only verifies prerequisites: it performs no installation or fetching. Dirty
+submodule checkouts are never moved.
 
 ## Build and run
 
 ```sh
-cmake --preset dev
-cmake --build --preset dev
-./build/dev/src/truffle-studio
-ctest --preset dev
+./build.sh
+./out/debug/bin/truffle-studio
+ctest --preset debug
 ```
 
-Requirements: CMake 3.23+, Ninja, Xcode command-line tools.
+`./build.sh release` selects an optimized build; `./build.sh relwithdebinfo`
+selects an optimized build with debugging information. Warnings-as-errors is
+a separate toggle within any selected configuration:
+
+```sh
+./build.sh debug --warnings-as-errors on --parallel 4
+./build.sh debug --warnings-as-errors off --parallel 4
+```
+
+New builds default to off. Each configuration remembers its setting until
+explicitly changed; toggling does not create a different build directory.
+The flag applies to first-party Studio and Truffle targets, not vendored
+third-party warning policy. Direct CMake use can set
+`-DSTUDIO_WARNINGS_AS_ERRORS=ON` or `OFF` with the same effect.
+Other build arguments are passed to `cmake --build`. Scripts locate the repository
+independently of the current directory; direct CMake commands remain supported.
+PowerShell entry points report the unsupported platform rather than pretending
+Studio builds on Windows. No install script is provided yet.
+
+```text
+build/<preset>/         CMake internals and intermediate dependency builds
+out/<preset>/bin/       truffle-studio and test executables
+out/<preset>/lib/       Studio, Truffle, SDL and OCCT libraries
+install/<preset>/dependencies/  dependency headers and build-time staging
+build/_scratch/         temporary validation logs and probes
+```
+
+All these directories are ignored by Git. `STUDIO_OUTPUT_DIR` and
+`STUDIO_DEPENDENCY_PREFIX` can override the direct-build locations.
 
 The first build also compiles the OpenCASCADE modelling toolkits (Release,
-shared libraries) into `build/<preset>/occt`. This takes a few minutes on
+shared libraries). Their intermediate build stays in `build/<preset>/occt-build`;
+the usable libraries go to `out/<preset>/lib` and headers/staging to
+`install/<preset>/dependencies/occt`. This takes a few minutes on
 Apple Silicon. Later builds reuse it.
 
 ## Updating Truffle

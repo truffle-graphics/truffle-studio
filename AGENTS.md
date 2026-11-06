@@ -13,5 +13,6 @@
 4. Update `docs/handoff.md` before every AI-authored commit.
 5. Respect the Studio/Truffle boundary in `PROJECT_CONTEXT.md`. Truffle
    changes go to `truffle-graphics/truffle` through its own process.
-6. Validate locally: build with the `strict` preset and run `ctest`. Hosted CI
-   is not used.
+6. Validate locally: use the `debug` preset with warnings-as-errors enabled
+   (`./build.sh debug --warnings-as-errors on`) and run `ctest --preset debug`.
+   Hosted CI is not used.

@@ -2,6 +2,26 @@
 
 ## Current state
 
+User-approved tooling work (#18) adds native setup/build entry points,
+debug/release/relwithdebinfo presets, final executables in `out/<preset>/bin`, libraries
+in `out/<preset>/lib` and dependency headers/staging under
+`install/<preset>/dependencies`. Logs/probes belong in `build/_scratch`.
+Setup confirms missing-tool installation and prepares only the pinned Studio
+and required GUI-text submodules. Dirty submodule checkouts are not moved.
+Studio remains Apple Silicon/macOS-only; PowerShell entry points fail explicitly.
+Warnings-as-errors is independently toggled with `--warnings-as-errors on|off`,
+which sets the policy for first-party Studio and Truffle targets in the same
+build tree. New builds default to off; each configuration remembers its setting.
+The revision passes 15 isolated script checks, all three normal configurations
+and targeted Base builds that confirm cache persistence and shared output
+paths. Actual Studio and nested Truffle compiler flags reject a warning with
+on and permit it with off. The full app/smoke run was not repeated for this
+configuration-only revision; existing generated dev/strict artifacts remain
+untouched.
+No install script or workspace installer is implemented. Before the naming revision, the strict build,
+unit/smoke tests and OCCT lookup through `@loader_path/../lib` pass on macOS;
+the isolated shell entry-point safety/error tests also pass.
+
 Milestone 1 (#6) is complete and merged via PR #15. CAD is the only
 implemented workspace. Optional installation of future workspaces and data
 sharing between them are planned, not implemented; see ADR 0001.
@@ -14,7 +34,7 @@ sharing between them are planned, not implemented; see ADR 0001.
   edit/begin/update/commit, undo/redo, change listeners, id allocation).
   The app owns one `Document`; toolbar Undo/Redo and Cmd+Z / Shift+Cmd+Z
   drive it (a focused text field keeps them for its own text undo). `tests/` holds a small
-  harness; `ctest --preset strict` runs `studio_unit` and the smoke test.
+  harness; `ctest --preset debug` runs `studio_unit` and the smoke test.
 - #9 workspaces: `studio/shell` owns the top bar (workspace switcher,
   Undo/Redo, Reset layout), the active workspace's dock and the status line.
   `studio/workspace.hpp` defines `Workspace` (panels built into a fresh
@@ -28,7 +48,9 @@ sharing between them are planned, not implemented; see ADR 0001.
 - #10 kernel: `external/occt` (V8_0_1, shallow) builds through
   `cmake/StudioOcct.cmake` as an ExternalProject (Release, shared, only
   TKPrim/TKMesh/TKBO and dependencies; about 2 minutes clean) into
-  `build/<preset>/occt`. `src/kernel/kernel.hpp` is the OCCT-free interface
+  `out/<preset>/lib`, with headers/staging under
+  `install/<preset>/dependencies/occt` and intermediate compilation under
+  `build/<preset>/occt-build`. `src/kernel/kernel.hpp` is the OCCT-free interface
   (lines, arcs, circles, loops, profiles with holes, plane frames; extrude,
   tessellate, volume, bounds; `KernelError`). `occt_kernel.cpp` implements
   it, normalising loop winding and uniting multiple profiles. Seven kernel
