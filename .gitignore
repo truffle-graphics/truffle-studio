@@ -1,4 +1,5 @@
 /build*/
 /out/
+/install/
 .DS_Store
 *.user

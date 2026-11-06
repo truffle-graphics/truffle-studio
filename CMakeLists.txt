@@ -18,10 +18,11 @@ set(CMAKE_OBJCXX_STANDARD 20)
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 set(CMAKE_OBJCXX_EXTENSIONS OFF)
 
-option(STUDIO_WARNINGS_AS_ERRORS "Treat Studio warnings as errors" OFF)
+option(STUDIO_WARNINGS_AS_ERRORS "Treat Studio and Truffle warnings as errors" OFF)
 
 include(CTest)
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+include(StudioOutput)
 include(StudioDependencies)
 
 add_subdirectory(src)

@@ -40,6 +40,16 @@ See [ADR 0001](docs/adr/0001-workspace-application.md).
 macOS on Apple Silicon with the Metal backend. Other platforms follow when
 Truffle's backends and Studio's host code are verified there.
 
+Native setup/build entry points use debug/release/relwithdebinfo CMake presets (#18).
+Final executables/libraries go to `out/<preset>/bin` and `lib`; OCCT
+headers/staging go to `install/<preset>/dependencies`, while its private build
+stays in `build/<preset>/occt-build`. Temporary logs/probes use `build/_scratch`.
+Setup confirms missing-tool installation and prepares only pinned required
+submodules. No install script or workspace installer is implemented.
+Warnings-as-errors is an independent on/off switch within the chosen
+configuration. It governs first-party Studio and Truffle targets, not vendored
+third-party sources; each build remembers its setting.
+
 ## Planning
 
 Work is tracked as issues in this repository and on the

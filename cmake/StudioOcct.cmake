@@ -7,11 +7,11 @@ include(ExternalProject)
 
 set(STUDIO_OCCT_TOOLKITS
     TKernel TKMath TKG2d TKG3d TKGeomBase TKBRep TKGeomAlgo TKTopAlgo TKPrim TKMesh TKBO)
-set(STUDIO_OCCT_PREFIX "${CMAKE_BINARY_DIR}/occt")
+set(STUDIO_OCCT_PREFIX "${STUDIO_DEPENDENCY_PREFIX}/occt")
 set(STUDIO_OCCT_LIBRARIES)
 foreach(toolkit IN LISTS STUDIO_OCCT_TOOLKITS)
     list(APPEND STUDIO_OCCT_LIBRARIES
-        "${STUDIO_OCCT_PREFIX}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}${toolkit}${CMAKE_SHARED_LIBRARY_SUFFIX}")
+        "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/${CMAKE_SHARED_LIBRARY_PREFIX}${toolkit}${CMAKE_SHARED_LIBRARY_SUFFIX}")
 endforeach()
 
 # OCCT is always optimised: its debug build is very slow for meshing.
@@ -24,6 +24,7 @@ ExternalProject_Add(studio_occt_build
         -G Ninja
         -DCMAKE_BUILD_TYPE=Release
         -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+        -DINSTALL_DIR_LIB=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
         -DCMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
         -DINSTALL_DIR_LAYOUT=Unix
         -DBUILD_LIBRARY_TYPE=Shared
@@ -60,4 +61,4 @@ add_dependencies(studio_occt studio_occt_build)
 # strict warnings do not apply to them.
 target_include_directories(studio_occt SYSTEM INTERFACE "${STUDIO_OCCT_PREFIX}/include/opencascade")
 target_link_libraries(studio_occt INTERFACE ${STUDIO_OCCT_LIBRARIES})
-set(STUDIO_OCCT_LIBRARY_DIR "${STUDIO_OCCT_PREFIX}/lib")
+set(STUDIO_OCCT_LIBRARY_DIR "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")

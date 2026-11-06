@@ -32,7 +32,7 @@ target_link_libraries(truffle_studio PRIVATE
 target_compile_options(truffle_studio PRIVATE "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
 studio_target_warnings(truffle_studio)
 set_target_properties(truffle_studio PROPERTIES OUTPUT_NAME truffle-studio
-    BUILD_RPATH "${STUDIO_OCCT_LIBRARY_DIR}")
+    BUILD_RPATH "@loader_path/../lib")
 
 if(BUILD_TESTING)
     add_test(NAME truffle_studio_smoke COMMAND truffle_studio --smoke)
