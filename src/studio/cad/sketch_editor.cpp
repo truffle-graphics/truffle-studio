@@ -23,7 +23,6 @@ constexpr gui::Color background{0.11F, 0.12F, 0.14F, 1};
 constexpr gui::Color curve_color{0.86F, 0.88F, 0.92F, 1};
 constexpr gui::Color accent{0.35F, 0.6F, 1, 1};
 constexpr gui::Color preview{0.35F, 0.6F, 1, 0.7F};
-constexpr gui::Color active_tool{0.24F, 0.45F, 0.85F, 1};
 constexpr gui::Color constrained_color{0.55F, 0.85F, 0.6F, 1};
 constexpr gui::Color conflict_color{0.95F, 0.45F, 0.4F, 1};
 constexpr float field_width = 64;
@@ -80,7 +79,7 @@ const char* SketchEditor::action_name(Action action) noexcept {
     return "?";
 }
 
-void SketchEditor::build(WorkspaceServices& services, gui::ElementId parent) {
+void SketchEditor::build(WorkspaceServices& services, gui::ElementId parent, gui::ElementId inspector) {
     services_ = &services;
     auto& context = services.ui.context;
 
@@ -92,11 +91,25 @@ void SketchEditor::build(WorkspaceServices& services, gui::ElementId parent) {
         }));
     }
 
-    const auto constraints = services.ui.row(parent, 4);
+    constraints_ = need(context.create(inspector));
+    need(context.set_layout(constraints_, std::make_shared<gui::StackLayout>(gui::StackOptions{.spacing = 6})));
+    need(context.set_clips_children(constraints_, true));
+    static_cast<void>(services.ui.label(constraints_, "Constraints"));
+    const auto grid = need(context.create(constraints_));
+    constraint_grid_ = grid;
+    constraint_columns_ = 2;
+    need(context.set_layout(grid, std::make_shared<gui::GridLayout>(gui::GridOptions{
+        .columns = {gui::Track::weighted(), gui::Track::weighted()},
+        .column_spacing = 4, .row_spacing = 4})));
     for (const auto action : actions) {
-        action_buttons_.push_back(services.ui.button(constraints, action_name(action), [this, action] {
+        auto button = services.ui.button(grid, action_name(action), [this, action] {
             static_cast<void>(apply(action));
-        }));
+        });
+        auto params = need(context.layout_params(button.element()));
+        params.cell.column = static_cast<std::uint16_t>(action_buttons_.size() % 2);
+        params.cell.row = static_cast<std::uint16_t>(action_buttons_.size() / 2);
+        need(context.set_layout_params(button.element(), params));
+        action_buttons_.push_back(button);
     }
 
     canvas_ = need(context.create(parent));
@@ -116,10 +129,23 @@ void SketchEditor::build(WorkspaceServices& services, gui::ElementId parent) {
     sync();
 }
 
+void SketchEditor::set_visible(bool visible) {
+    visible_ = visible;
+    if (!services_) { return; }
+    const bool shown = visible && active() && !selection_.empty();
+    gui::LayoutParams params;
+    if (!shown) { params.height = 0; }
+    need(services_->ui.context.set_layout_params(constraints_, params));
+    need(services_->ui.context.set_interaction(constraints_, {.enabled = shown}));
+    refresh_tools();
+}
+
 void SketchEditor::teardown() {
     if (services_ && dragging_) { services_->document.cancel(); }
     services_ = nullptr;
     canvas_ = {};
+    constraints_ = {};
+    constraint_grid_ = {};
     tool_buttons_.clear();
     action_buttons_.clear();
     fields_.clear();
@@ -144,7 +170,10 @@ void SketchEditor::set_tool(Tool tool) {
     tool_ = tool;
     cancel();
     refresh_tools();
-    if (services_) { services_->report(std::string("Tool: ") + tool_name(tool)); }
+    if (services_) {
+        services_->report(std::string("Tool: ") + tool_name(tool));
+        if (visible_) { need(services_->ui.context.focus(canvas_)); }
+    }
     notify();
 }
 
@@ -179,20 +208,10 @@ bool SketchEditor::editing_dimension(const gui::Context& context) const {
     });
 }
 
-bool SketchEditor::apply(Action action) {
-    if (!services_) { return false; }
+std::vector<SketchEditor::Request> SketchEditor::requests(Action action) const {
     const auto* sketch = active();
-    const std::string name = action_name(action);
-    if (!sketch || selection_.empty()) {
-        services_->report(name + ": select sketch geometry first");
-        return false;
-    }
+    if (!sketch || selection_.empty()) { return {}; }
     using Kind = model::ConstraintKind;
-    struct Request {
-        Kind kind;
-        model::ObjectId a;
-        model::ObjectId b;
-    };
     std::vector<Request> requests;
     const auto& sel = selection_;
     const auto pair = [&](Kind kind) {
@@ -230,12 +249,32 @@ bool SketchEditor::apply(Action action) {
         }
         break;
     }
-    auto error = requests.empty() ? model::ConstrainError::unsuitable : model::ConstrainError::none;
+    return requests;
+}
+
+bool SketchEditor::can_apply(Action action) const {
+    if (!visible_) { return false; }
+    const auto pending = requests(action);
+    return !pending.empty() && std::ranges::all_of(pending, [&](const Request& request) {
+        return model::constraint_fits(*active(), request.kind, request.a, request.b);
+    });
+}
+
+bool SketchEditor::apply(Action action) {
+    if (!services_) { return false; }
+    const std::string name = action_name(action);
+    if (!active() || selection_.empty()) {
+        services_->report(name + ": select sketch geometry first");
+        return false;
+    }
+    const auto pending = requests(action);
+    auto error = can_apply(action) ? model::ConstrainError::none : model::ConstrainError::unsuitable;
     if (error == model::ConstrainError::none) {
+        need(services_->ui.context.focus(canvas_));
         static_cast<void>(services_->document.edit(name, [&](model::DocumentState& state) {
             const auto saved = state;
             auto* target = state.sketch(sketch_);
-            for (const auto& r : requests) {
+            for (const auto& r : pending) {
                 if (error != model::ConstrainError::none) { break; }
                 error = model::constrain(state, *target, r.kind, r.a, r.b).error;
             }
@@ -288,6 +327,23 @@ std::optional<gui::Point> SketchEditor::dimension_anchor(const model::Sketch& sk
     const auto edge = sketch.at(center) + Vec2{radius, radius} * std::numbers::sqrt2 * 0.5;
     const auto p = local(edge);
     return gui::Point{p.x + 24, p.y - 16};
+}
+
+void SketchEditor::before_frame() {
+    if (!services_ || !constraints_.valid()) { return; }
+    auto& context = services_->ui.context;
+    const std::uint16_t columns = need(context.bounds(constraints_)).width >= 220 ? 2 : 1;
+    if (columns == constraint_columns_) { return; }
+    constraint_columns_ = columns;
+    need(context.set_layout(constraint_grid_, std::make_shared<gui::GridLayout>(gui::GridOptions{
+        .columns = std::vector<gui::Track>(columns, gui::Track::weighted()),
+        .column_spacing = 4, .row_spacing = 4})));
+    for (std::size_t i = 0; i < action_buttons_.size(); ++i) {
+        auto params = need(context.layout_params(action_buttons_[i].element()));
+        params.cell.column = static_cast<std::uint16_t>(i % columns);
+        params.cell.row = static_cast<std::uint16_t>(i / columns);
+        need(context.set_layout_params(action_buttons_[i].element(), params));
+    }
 }
 
 void SketchEditor::update() {
@@ -676,14 +732,17 @@ void SketchEditor::redraw() {
 }
 
 void SketchEditor::notify() {
+    if (services_) { set_visible(visible_); }
     if (changed) { changed(); }
 }
 
 void SketchEditor::refresh_tools() {
     if (!services_) { return; }
     for (std::size_t i = 0; i < tool_buttons_.size(); ++i) {
-        const auto fill = tools[i] == tool_ ? active_tool : gui::Color{};
-        need(services_->ui.context.set_decoration(tool_buttons_[i].first, {.fill = fill, .corner_radius = 4}));
+        services_->ui.highlight(tool_buttons_[i].first, tools[i] == tool_);
+    }
+    for (std::size_t i = 0; i < action_buttons_.size(); ++i) {
+        need(action_buttons_[i].set_enabled(can_apply(actions[i])));
     }
 }
 

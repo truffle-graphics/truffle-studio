@@ -2,11 +2,34 @@
 
 ## Current state
 
+Usability-first CAD cleanup (#21) is approved for commit and push on
+`feature/cad-ui-cleanup`; merging remains pending. The Truffle submodule now
+points at `b4ba538` (the merged #261 themes);
+the previous pin was still `3494345`, predating the neutral themes.
+
+The shell drops the duplicate app title, hides its switcher with only one
+available workspace, uses neutral theme bindings and moves Reset layout to
+the status bar. Studio's UI construction uses compact content-sized controls;
+Undo/Redo follow history availability. Model/Viewport/Inspector default to
+18/64/18 proportions. All plane buttons share a separate row; features scroll
+and Extrude requires a closed profile. The Inspector scrolls, shows selected
+feature details, and lays out distance labels/fields vertically. Sketch tools
+stay above the canvas; constraints appear in the Inspector only with selected
+sketch geometry, use the model's suitability checks, and reflow between one
+and two columns. Fit is available only in 3D; entering sketch mode clears the
+extrude selection. Ordinary selection highlights use Truffle theme tokens;
+geometry's semantic constraint/axis colours remain application-owned.
+
+The Debug build with warnings-as-errors and unit/native smoke tests pass.
+Smoke coverage now checks sole/multiple-workspace chrome, plane/toolbar label
+containment at 1280x800 and 1024x700, canvas space, history and extrusion
+availability, and contextual constraints. Native visual inspection confirms
+the compact neutral shell; no custom Studio theme was added.
+
 Pre-release versioning policy (user decision) is recorded in
 `PROJECT_CONTEXT.md`: until the first release tag, breaking changes within
 Studio, within Truffle or between them need no version bump or compatibility
-path. Studio adopts Truffle's #260 neutral default theme without code changes;
-`src/studio/shell.cpp` still hard-codes some colours (follow-up).
+path.
 
 User-approved tooling work (#18) adds native setup/build entry points,
 debug/release/relwithdebinfo presets, final executables in `out/<preset>/bin`, libraries
@@ -41,8 +64,8 @@ sharing between them are planned, not implemented; see ADR 0001.
   The app owns one `Document`; toolbar Undo/Redo and Cmd+Z / Shift+Cmd+Z
   drive it (a focused text field keeps them for its own text undo). `tests/` holds a small
   harness; `ctest --preset debug` runs `studio_unit` and the smoke test.
-- #9 workspaces: `studio/shell` owns the top bar (workspace switcher,
-  Undo/Redo, Reset layout), the active workspace's dock and the status line.
+- #9 workspaces: `studio/shell` owns the top bar (conditional workspace switcher,
+  Undo/Redo), the active workspace's dock and the status line with Reset layout.
   `studio/workspace.hpp` defines `Workspace` (panels built into a fresh
   dock on activation, torn down on switch, layout kept per workspace) and
   `EngineProfile` (clear colour, depth, continuous redraw; the app applies
@@ -84,7 +107,7 @@ sharing between them are planned, not implemented; see ADR 0001.
   duplicates and anything over-constraining; `set_dimension()` re-solves
   or leaves the sketch alone. Rectangles get H/V constraints; removing
   entities drops their constraints. The editor has Shift-click
-  multi-select, a constraint toolbar (Dimension = line length, point
+  multi-select, Inspector constraint commands (Dimension = line length, point
   distance, circle diameter, arc radius), point dragging that re-solves
   with the point pinned (one undo step), and dimension text fields placed
   on the canvas in `update()` (Enter applies; events from fields are not

@@ -35,6 +35,7 @@ public:
     truffle::gui::Widget part_name;
     truffle::gui::Widget sketch_info;
     truffle::gui::Widget new_sketch;
+    std::vector<truffle::gui::Widget> plane_buttons;
     truffle::gui::Widget extrude_button;
     // The selected extrude's distance; only alive while one is selected.
     truffle::gui::Widget extrude_distance;

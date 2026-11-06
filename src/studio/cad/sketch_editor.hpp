@@ -32,14 +32,17 @@ public:
                                         Action::fixed,      Action::dimension};
     static const char* action_name(Action action) noexcept;
 
-    // Builds the toolbar and canvas into `parent`, a vertical stack.
-    void build(WorkspaceServices& services, truffle::gui::ElementId parent);
+    // Drawing tools stay above the canvas; constraints live in the Inspector.
+    void build(WorkspaceServices& services, truffle::gui::ElementId parent,
+               truffle::gui::ElementId inspector);
+    void set_visible(bool visible);
     void teardown();
     // Follows document changes (undo can remove the active sketch).
     void sync();
     // Once per loop turn, outside input dispatch: creates, removes and
     // places the dimension fields.
     void update();
+    void before_frame();
 
     void set_tool(Tool tool);
     Tool tool() const noexcept { return tool_; }
@@ -52,6 +55,7 @@ public:
     // Applies `action` to the selection; false (and a status message) if
     // the selection does not suit it or it would over-constrain.
     bool apply(Action action);
+    bool can_apply(Action action) const;
     // How constrained the active sketch is.
     const model::SolveResult& status() const noexcept { return status_; }
     // The field showing a dimension constraint's value.
@@ -88,9 +92,19 @@ private:
     void notify();
     void paint(truffle::gui::ShapeWriter& out, truffle::gui::Size size) const;
     void refresh_tools();
+    struct Request {
+        model::ConstraintKind kind;
+        model::ObjectId a;
+        model::ObjectId b;
+    };
+    std::vector<Request> requests(Action action) const;
 
     WorkspaceServices* services_ = nullptr;
     truffle::gui::ElementId canvas_;
+    truffle::gui::ElementId constraints_;
+    truffle::gui::ElementId constraint_grid_;
+    std::uint16_t constraint_columns_ = 2;
+    bool visible_ = true;
     std::vector<std::pair<truffle::gui::ElementId, truffle::gui::Widget>> tool_buttons_;
     std::vector<truffle::gui::Widget> action_buttons_;
     struct Field {

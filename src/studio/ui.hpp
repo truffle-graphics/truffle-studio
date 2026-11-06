@@ -19,10 +19,19 @@ struct Ui {
     truffle::gui::TextureId atlas;
 
     truffle::gui::Widget widget(truffle::gui::ElementId parent, truffle::gui::WidgetDesc desc) const {
+        const auto kind = desc.kind;
         desc.text_engine = &text;
         desc.font = font;
         desc.atlas = atlas;
-        return need(truffle::gui::Widget::create(context, parent, std::move(desc)));
+        auto result = need(truffle::gui::Widget::create(context, parent, std::move(desc)));
+        if (kind == truffle::gui::WidgetKind::button || kind == truffle::gui::WidgetKind::text_edit) {
+            auto params = need(context.layout_params(result.element()));
+            params.min = {0, 28};
+            need(context.set_layout_params(result.element(), params));
+            need(context.set_property_override(result.element(), truffle::gui::Property::padding,
+                                                truffle::gui::Edges{8, 4, 8, 4}));
+        }
+        return result;
     }
     truffle::gui::Widget label(truffle::gui::ElementId parent, std::string value) const {
         return widget(parent, {.kind = truffle::gui::WidgetKind::label, .text = std::move(value)});
@@ -31,6 +40,14 @@ struct Ui {
                                 std::function<void()> activated) const {
         return widget(parent, {.kind = truffle::gui::WidgetKind::button, .text = std::move(value),
                                .activated = std::move(activated)});
+    }
+    void highlight(truffle::gui::ElementId element, bool selected) const {
+        need(context.bind_property(element, truffle::gui::Property::fill, "gui.accent"));
+        if (selected) {
+            need(context.clear_property_override(element, truffle::gui::Property::fill));
+        } else {
+            need(context.set_property_override(element, truffle::gui::Property::fill, truffle::gui::Color{}));
+        }
     }
     // A horizontal stack under `parent`.
     truffle::gui::ElementId row(truffle::gui::ElementId parent, float spacing,

@@ -96,6 +96,23 @@ git -C external/truffle checkout origin/develop
 git add external/truffle
 ```
 
+## CAD workspace
+
+The Model panel creates sketches on XY, XZ or YZ and lists the document's
+features. Drawing directly in an empty sketch view starts an XY sketch.
+Extrude becomes available once the active sketch has a closed profile.
+Sketch/3D switches the viewport; Fit operates in the 3D view.
+
+Drawing tools stay above the sketch canvas. Select geometry to reveal
+constraints in the Inspector; only commands suitable for the selection are
+enabled. Constraints reflow to one column in a narrow Inspector. The Inspector
+also shows sketch/feature details and the selected extrude's editable distance.
+Both side panels support scrolling.
+
+Undo/Redo follow document history. Reset layout is at the right of the status
+bar. Workspace switching appears only when more than one implemented workspace
+is registered; the normal application currently opens only CAD.
+
 ## Documentation
 
 - `PROJECT_CONTEXT.md`: purpose and boundaries

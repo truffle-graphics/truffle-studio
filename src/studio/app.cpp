@@ -229,10 +229,6 @@ int run(const AppOptions& options) {
     model::Document document;
     Shell shell(document, text, font, atlas, &scene);
     shell.add(std::make_unique<cad::CadWorkspace>());
-    if (options.smoke) {
-        shell.add(std::make_unique<PlannedWorkspace>("unavailable", "Unavailable"));
-        shell.add(std::make_unique<ProbeWorkspace>());
-    }
     shell.activate("cad");
     auto& context = shell.context;
     std::string profile;
@@ -319,6 +315,64 @@ int run(const AppOptions& options) {
         expect(profile == "CAD", "the CAD engine profile was not applied");
         expect(dock::panel_ids(shell.dock.layout()).size() == 3, "CAD panels are missing");
 
+        const auto switcher_bar = need(context.parent(need(context.parent(shell.switcher("cad").element()))));
+        expect(need(context.bounds(switcher_bar)).width == 0 &&
+                   !need(context.interaction(switcher_bar)).enabled,
+               "the sole workspace still has a visible or interactive switcher");
+        expect(!need(context.interaction(shell.undo_button.element())).enabled &&
+                   !need(context.interaction(shell.redo_button.element())).enabled,
+               "empty history commands are enabled");
+        expect(!need(context.interaction(cad_space->extrude_button.element())).enabled,
+               "Extrude is enabled without a sketch");
+        const auto fits = [&](const gui::Widget& widget) {
+            const auto bounds = need(context.absolute_bounds(widget.element()));
+            const auto parent = need(context.absolute_bounds(need(context.parent(widget.element()))));
+            const auto padding = need(context.layout_params(widget.element())).padding;
+            const auto content = need(text.shape(font, need(widget.text()))).size;
+            expect(bounds.x >= parent.x - 0.5F && bounds.y >= parent.y - 0.5F &&
+                       bounds.x + bounds.width <= parent.x + parent.width + 0.5F &&
+                       bounds.y + bounds.height <= parent.y + parent.height + 0.5F,
+                   "a control overflows its layout");
+            expect(content.width + padding.horizontal() <= bounds.width + 0.5F &&
+                       content.height + padding.vertical() <= bounds.height + 0.5F,
+                   "a control clips its label");
+        };
+        const auto check_layout = [&] {
+            for (const auto& button : cad_space->plane_buttons) { fits(button); }
+            for (const auto tool : cad::SketchEditor::tools) { fits(cad_space->editor.tool_button(tool)); }
+            fits(shell.reset_layout);
+            fits(shell.undo_button);
+            fits(shell.redo_button);
+            const auto canvas = need(context.bounds(cad_space->editor.canvas()));
+            expect(canvas.width >= context.viewport().width * 0.60F &&
+                       canvas.height >= context.viewport().height * 0.73F,
+                   "chrome leaves too little room for the sketch canvas");
+        };
+        check_layout();
+        expect(SDL_SetWindowSize(window.native(), 1024, 700), "could not resize the smoke window");
+        settle();
+        check_layout();
+        expect(SDL_SetWindowSize(window.native(), 1280, 800), "could not restore the smoke window size");
+        settle();
+        for (const auto& button : cad_space->plane_buttons) {
+            push_click(window, center(context, button.element()));
+            settle();
+            expect(document.state().sketches.size() == 1 &&
+                       model::plane_name(document.state().sketches[0].plane) == need(button.text()),
+                   "a plane button did not create its sketch");
+            shell.undo();
+            settle();
+            expect(document.state().sketches.empty(), "undo did not remove the test sketch");
+        }
+        shell.add(std::make_unique<PlannedWorkspace>("unavailable", "Unavailable"));
+        expect(need(context.bounds(switcher_bar)).width == 0,
+               "a planned workspace made the sole-workspace switcher visible");
+        shell.add(std::make_unique<ProbeWorkspace>());
+        settle();
+        expect(need(context.bounds(switcher_bar)).width > 0 &&
+                   need(context.interaction(switcher_bar)).enabled,
+               "multiple available workspaces have no switcher");
+
         push_click(window, center(context, shell.switcher("unavailable").element()));
         settle();
         expect(shell.active() == cad_space, "a planned workspace became active");
@@ -336,6 +390,9 @@ int run(const AppOptions& options) {
                "committed IME text did not reach the editor");
         expect(edited.find("\xE3\x81\x8B") == std::string::npos, "preedit text was committed");
         expect(document.state().name == edited, "the name edit did not reach the document");
+        expect(need(context.interaction(shell.undo_button.element())).enabled &&
+                   !need(context.interaction(shell.redo_button.element())).enabled,
+               "history controls did not follow an edit");
         expect(presenter.frames() > idle, "the edit was not drawn");
 
         // In a focused text field the shortcuts edit the field's own text.
@@ -393,6 +450,8 @@ int run(const AppOptions& options) {
         settle();
         expect(sketch() && sketch()->lines.size() == 4, "drawing a rectangle did not add four lines");
         expect(model::find_loops(*sketch()).closed.size() == 1, "the rectangle is not a closed profile");
+        expect(need(context.interaction(cad_space->extrude_button.element())).enabled,
+               "Extrude did not become available for a closed profile");
         expect(cad_space->sketch_buttons.size() == 1, "the sketch list did not show the new sketch");
         push_shortcut(window, SDLK_C, SDL_KMOD_NONE);
         settle();
@@ -417,6 +476,8 @@ int run(const AppOptions& options) {
         settle();
         expect(document.state().sketches.empty() && editor.sketch() == 0 && cad_space->sketch_buttons.empty(),
                "undoing the first drawing did not remove its sketch");
+        expect(!need(context.interaction(cad_space->extrude_button.element())).enabled,
+               "Extrude stayed enabled after its sketch was removed");
         push_click(window, center(context, cad_space->new_sketch.element()));
         settle();
         expect(document.state().sketches.size() == 1 && editor.sketch() == document.state().sketches[0].id,
@@ -425,6 +486,13 @@ int run(const AppOptions& options) {
         // Constraints: fix a rectangle's corner, dimension two sides, then
         // edit a dimension in its field and drag a free corner.
         using Action = cad::SketchEditor::Action;
+        const auto constraint_group = need(context.parent(need(context.parent(editor.action_button(Action::fixed).element()))));
+        expect(need(context.bounds(constraint_group)).height == 0,
+               "constraints clutter the Inspector with no selection");
+        for (const auto action : cad::SketchEditor::actions) {
+            expect(!need(context.interaction(editor.action_button(action).element())).enabled,
+                   "a constraint is enabled without selected geometry");
+        }
         push_click(window, center(context, editor.tool_button(Tool::rectangle).element()));
         push_click(window, editor.to_window({0, 0}));
         push_click(window, editor.to_window({30, 20}));
@@ -449,11 +517,33 @@ int run(const AppOptions& options) {
             SDL_SetModState(SDL_KMOD_NONE);
         };
         select({{0, 0}});
+        expect(editor.can_apply(Action::fixed) && !editor.can_apply(Action::horizontal) &&
+                   !editor.can_apply(Action::dimension),
+               "constraint suitability is wrong for a selected point");
+        expect(need(context.interaction(editor.action_button(Action::fixed).element())).enabled &&
+                   !need(context.interaction(editor.action_button(Action::horizontal).element())).enabled,
+               "constraint buttons do not reflect point selection");
+        for (const auto action : cad::SketchEditor::actions) { fits(editor.action_button(action)); }
+        expect(SDL_SetWindowSize(window.native(), 1600, 900), "could not enlarge selected sketch");
+        settle();
+        for (const auto action : cad::SketchEditor::actions) { fits(editor.action_button(action)); }
+        expect(need(context.layout_params(editor.action_button(Action::horizontal).element())).cell.column == 1,
+               "wide Inspector constraints did not use two columns");
+        expect(SDL_SetWindowSize(window.native(), 1024, 700), "could not resize selected sketch");
+        settle();
+        for (const auto action : cad::SketchEditor::actions) { fits(editor.action_button(action)); }
+        expect(need(context.layout_params(editor.action_button(Action::horizontal).element())).cell.column == 0,
+               "narrow Inspector constraints did not use one column");
+        expect(SDL_SetWindowSize(window.native(), 1280, 800), "could not restore selected sketch");
+        settle();
         push_click(window, center(context, editor.action_button(Action::fixed).element()));
         settle();
         expect(editor.status().freedom == 2, "fixing a corner did not remove two degrees of freedom");
         select({{15, 0}});
         expect(editor.selection() == std::vector{bottom}, "clicking the bottom edge did not select it");
+        expect(editor.can_apply(Action::horizontal) && editor.can_apply(Action::dimension) &&
+                   !editor.can_apply(Action::fixed) && !editor.can_apply(Action::parallel),
+               "constraint suitability is wrong for a selected line");
         push_click(window, center(context, editor.action_button(Action::dimension).element()));
         select({{30, 10}});
         push_click(window, center(context, editor.action_button(Action::dimension).element()));
@@ -504,6 +594,9 @@ int run(const AppOptions& options) {
                "Extrude did not add a feature to the tree");
         expect(scene.has_mesh() && std::abs(volume() - 6000) < 1e-6, "the extrude did not regenerate a 6000 mm3 solid");
         expect(cad_space->showing_model(), "Extrude did not switch to the 3D view");
+        expect(need(context.bounds(constraint_group)).height == 0 &&
+                   !need(context.interaction(editor.action_button(Action::dimension).element())).enabled,
+               "sketch constraints remain available in the 3D view");
         expect(std::abs(view.camera.target.x - 15) < 1e-6 && std::abs(view.camera.target.z - 5) < 1e-6,
                "the new extrude was not fitted");
         const auto before_fit = scene.passes();

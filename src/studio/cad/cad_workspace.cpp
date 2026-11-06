@@ -13,8 +13,6 @@ namespace gui = truffle::gui;
 namespace dock = truffle::gui::dock;
 
 namespace {
-constexpr gui::Color selected{0.24F, 0.45F, 0.85F, 1};
-
 // A vertical stack under `parent` that takes the leftover height.
 gui::ElementId page(gui::Context& context, gui::ElementId parent) {
     const auto element = need(context.create(parent));
@@ -43,12 +41,9 @@ void CadWorkspace::build(WorkspaceServices& services, dock::DockSpace& space) {
     services_ = &services;
     const auto& ui = services.ui;
 
-    const auto model = ui.column(10);
-    static_cast<void>(ui.label(model, "Features"));
-    feature_list_ = need(ui.context.create(model));
-    need(ui.context.set_layout(feature_list_, std::make_shared<gui::StackLayout>(gui::StackOptions{.spacing = 2})));
+    const auto model = ui.column(8);
+    static_cast<void>(ui.label(model, "New sketch"));
     const auto planes = ui.row(model, 4);
-    static_cast<void>(ui.label(planes, "New sketch on"));
     for (const auto plane : {model::SketchPlane::xy, model::SketchPlane::xz, model::SketchPlane::yz}) {
         auto button = ui.button(planes, model::plane_name(plane), [this, plane] {
             model::ObjectId created = 0;
@@ -60,27 +55,42 @@ void CadWorkspace::build(WorkspaceServices& services, dock::DockSpace& space) {
                 show_model(false);
             }
         });
+        auto params = need(ui.context.layout_params(button.element()));
+        params.weight = 1;
+        need(ui.context.set_layout_params(button.element(), params));
+        plane_buttons.push_back(button);
         if (plane == model::SketchPlane::xy) { new_sketch = button; }
     }
+    static_cast<void>(ui.label(model, "Features"));
+    const auto features = ui.widget(model, {.kind = gui::WidgetKind::scroll_area});
+    gui::LayoutParams feature_params;
+    feature_params.weight = 1;
+    need(ui.context.set_layout_params(features.element(), feature_params));
+    need(ui.context.set_property_override(features.element(), gui::Property::padding, gui::Edges{}));
+    need(ui.context.set_property_override(features.element(), gui::Property::border_width, 0.0F));
+    feature_list_ = features.content();
+    need(ui.context.set_layout(feature_list_, std::make_shared<gui::StackLayout>(gui::StackOptions{.spacing = 2})));
     extrude_button = ui.button(model, "Extrude sketch", [this] { extrude_active_sketch(); });
 
-    const auto viewport = ui.column(8);
+    const auto viewport = ui.column(6, 4);
     const auto modes = ui.row(viewport, 4);
     sketch_highlight_ = ui.row(modes, 0, {2, 2, 2, 2});
     sketch_mode = ui.button(sketch_highlight_, "Sketch", [this] { show_model(false); });
     model_highlight_ = ui.row(modes, 0, {2, 2, 2, 2});
     model_mode = ui.button(model_highlight_, "3D", [this] { show_model(true); });
     fit_view = ui.button(modes, "Fit", [this] {
-        show_model(true);
         view.fit();
     });
     sketch_page_ = page(ui.context, viewport);
     model_page_ = page(ui.context, viewport);
-    editor.changed = [this] { refresh(); };
-    editor.build(services, sketch_page_);
-    view.build(services, model_page_);
-
-    const auto inspector = ui.column(12);
+    const auto inspector_panel = ui.column(0, 0);
+    const auto inspector_scroll = ui.widget(inspector_panel, {.kind = gui::WidgetKind::scroll_area});
+    gui::LayoutParams inspector_params;
+    inspector_params.weight = 1;
+    need(ui.context.set_layout_params(inspector_scroll.element(), inspector_params));
+    need(ui.context.set_property_override(inspector_scroll.element(), gui::Property::border_width, 0.0F));
+    const auto inspector = inspector_scroll.content();
+    need(ui.context.set_layout(inspector, std::make_shared<gui::StackLayout>(gui::StackOptions{.spacing = 8})));
     inspector_ = inspector;
     static_cast<void>(ui.label(inspector, "Part name"));
     part_name = ui.widget(inspector, {
@@ -92,14 +102,17 @@ void CadWorkspace::build(WorkspaceServices& services, dock::DockSpace& space) {
             }
         }});
     sketch_info = ui.label(inspector, "");
+    editor.changed = [this] { refresh(); };
+    editor.build(services, sketch_page_, inspector);
+    view.build(services, model_page_);
 
     need(space.add_panel("model", "Model", model));
     need(space.add_panel("viewport", "Viewport", viewport));
-    need(space.add_panel("inspector", "Inspector", inspector));
+    need(space.add_panel("inspector", "Inspector", inspector_panel));
     need(space.set_layout(dock::DockNode::split(dock::Axis::horizontal, {
         dock::DockNode::tabs({"model"}),
         dock::DockNode::tabs({"viewport"}),
-        dock::DockNode::tabs({"inspector"})}, {0.2F, 0.58F, 0.22F})));
+        dock::DockNode::tabs({"inspector"})}, {0.18F, 0.64F, 0.18F})));
     subscription_ = services.document.subscribe([this] { sync(); });
     show_model(false);
     regenerate();
@@ -122,6 +135,7 @@ void CadWorkspace::teardown() {
     part_name = {};
     sketch_info = {};
     new_sketch = {};
+    plane_buttons.clear();
     extrude_button = {};
     extrude_distance = {};
     sketch_buttons.clear();
@@ -215,7 +229,8 @@ void CadWorkspace::update_distance_field() {
     if (!extrude) { return; }
     const auto text = millimetres(extrude->distance);
     if (!distance_row_.valid()) {
-        distance_row_ = services_->ui.row(inspector_, 6);
+        distance_row_ = need(context.create(inspector_));
+        need(context.set_layout(distance_row_, std::make_shared<gui::StackLayout>(gui::StackOptions{.spacing = 4})));
         static_cast<void>(services_->ui.label(distance_row_, "Distance (mm)"));
         extrude_distance = services_->ui.widget(distance_row_, {.kind = gui::WidgetKind::text_edit, .text = text,
                                                                 .activated = [this] { submit_distance(); }});
@@ -244,7 +259,10 @@ void CadWorkspace::submit_distance() {
     if (std::isfinite(value) && value != 0) { static_cast<void>(services_->ui.context.focus(view.element())); }
 }
 
-void CadWorkspace::before_frame() { view.before_frame(); }
+void CadWorkspace::before_frame() {
+    editor.before_frame();
+    view.before_frame();
+}
 
 void CadWorkspace::show_model(bool model) {
     if (!services_) { return; }
@@ -258,9 +276,13 @@ void CadWorkspace::show_model(bool model) {
     };
     show(sketch_page_, !model);
     show(model_page_, model);
-    need(context.set_decoration(sketch_highlight_, {.fill = model ? gui::Color{} : selected, .corner_radius = 4}));
-    need(context.set_decoration(model_highlight_, {.fill = model ? selected : gui::Color{}, .corner_radius = 4}));
+    services_->ui.highlight(sketch_highlight_, !model);
+    services_->ui.highlight(model_highlight_, model);
+    editor.set_visible(!model);
     view.set_visible(model);
+    need(fit_view.set_enabled(model));
+    if (!model) { selected_extrude_ = 0; }
+    refresh();
     if (model) { static_cast<void>(context.focus(view.element())); }
     context.request_frame();
 }
@@ -310,9 +332,8 @@ void CadWorkspace::rebuild_feature_list() {
         const auto highlight = services_->ui.row(feature_list_, 0, {2, 2, 2, 2});
         if (is_extrude) {
             const auto& extrude = *state.extrude(id);
-            const auto* sketch = state.sketch(extrude.sketch);
             const auto* result = regeneration_.result(id);
-            auto label = extrude.name + " <- " + (sketch ? sketch->name : std::string("missing sketch"));
+            auto label = extrude.name;
             if (result && !result->error.empty()) { label += " (failed)"; }
             extrude_buttons.push_back(services_->ui.button(highlight, label, [this, id] {
                 selected_extrude_ = id;
@@ -343,16 +364,17 @@ void CadWorkspace::refresh() {
     for (const auto& entry : entries_) {
         const bool chosen = selected_extrude_ != 0 ? entry.extrude == selected_extrude_
                                                    : entry.extrude == 0 && entry.sketch == editor.sketch();
-        need(context.set_decoration(entry.highlight, {.fill = chosen ? selected : gui::Color{}, .corner_radius = 4}));
+        services_->ui.highlight(entry.highlight, chosen);
     }
+    const auto* active_sketch = services_->document.state().sketch(editor.sketch());
+    need(extrude_button.set_enabled(active_sketch && !model::find_loops(*active_sketch).closed.empty()));
     if (!sketch_info.alive()) { return; }
     const auto& state = services_->document.state();
     std::string info;
     if (const auto* extrude = state.extrude(selected_extrude_)) {
         const auto* sketch = state.sketch(extrude->sketch);
-        info = extrude->name + " of " + (sketch ? sketch->name : std::string("a missing sketch")) + "\n" +
-               millimetres(extrude->distance) + " mm along the " +
-               (sketch ? model::plane_name(sketch->plane) : "sketch") + " normal\n";
+        info = extrude->name + "\nSketch: " + (sketch ? sketch->name : std::string("missing")) +
+               "\nPlane: " + (sketch ? model::plane_name(sketch->plane) : "unknown") + "\n";
         const auto* result = regeneration_.result(extrude->id);
         if (result && !result->error.empty()) {
             info += "Failed: " + result->error;
@@ -362,21 +384,20 @@ void CadWorkspace::refresh() {
     } else if (const auto* sketch = state.sketch(editor.sketch())) {
         const auto loops = model::find_loops(*sketch);
         info = sketch->name + " on " + model::plane_name(sketch->plane) + "\n" +
-               plural(sketch->curve_count(), "curve") + ", " + plural(sketch->points.size(), "point") + "\n" +
+               plural(sketch->curve_count(), "curve") + "\n" + plural(sketch->points.size(), "point") + "\n" +
                plural(loops.closed.size(), "closed profile");
-        if (loops.open) { info += ", " + plural(loops.open, "open chain"); }
+        if (loops.open) { info += "\n" + plural(loops.open, "open chain"); }
         const auto& status = editor.status();
         info += "\n" + plural(sketch->constraints.size(), "constraint") + "\n";
         switch (status.status) {
         case model::SolveStatus::full: info += "Fully constrained"; break;
-        case model::SolveStatus::under: info += "Under-constrained (" + std::to_string(status.freedom) + " DOF)"; break;
+        case model::SolveStatus::under: info += "Under-constrained\n" + std::to_string(status.freedom) + " DOF"; break;
         case model::SolveStatus::over: info += "Over-constrained"; break;
         }
         if (!editor.selection().empty()) { info += "\n" + plural(editor.selection().size(), "item") + " selected"; }
     } else {
-        info = "No sketch yet. Draw in the viewport\nto start one on the XY plane.";
+        info = "No feature selected.\n\nCreate a sketch on\nXY, XZ or YZ, or draw\nto start on XY.";
     }
-    if (!state.extrude(selected_extrude_)) { info += std::string("\nTool: ") + SketchEditor::tool_name(editor.tool()); }
     if (need(sketch_info.text()) != info) { need(sketch_info.set_text(info)); }
     context.request_frame();
 }
