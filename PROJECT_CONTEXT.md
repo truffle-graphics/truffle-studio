@@ -35,6 +35,15 @@ See [ADR 0001](docs/adr/0001-workspace-application.md).
 - Document, workspace, sketch and solver code does not depend on Truffle or
   OpenCASCADE. Only the kernel implementation uses OpenCASCADE types.
 
+## Versioning before the first release
+
+Studio and Truffle are developed together; Studio is how Truffle is proven,
+not a conventional consumer. Until the first release tag (a prerelease such as
+`0.1.0` counts), breaking changes within Studio, within Truffle, or between
+them need no version bump, compatibility shim or deprecation path; callers
+are updated in the same change. From the first release tag onwards, breaking
+and patch changes are versioned and Studio adapts to Truffle releases.
+
 ## Platform
 
 macOS on Apple Silicon with the Metal backend. Other platforms follow when

@@ -2,6 +2,12 @@
 
 ## Current state
 
+Pre-release versioning policy (user decision) is recorded in
+`PROJECT_CONTEXT.md`: until the first release tag, breaking changes within
+Studio, within Truffle or between them need no version bump or compatibility
+path. Studio adopts Truffle's #260 neutral default theme without code changes;
+`src/studio/shell.cpp` still hard-codes some colours (follow-up).
+
 User-approved tooling work (#18) adds native setup/build entry points,
 debug/release/relwithdebinfo presets, final executables in `out/<preset>/bin`, libraries
 in `out/<preset>/lib` and dependency headers/staging under
