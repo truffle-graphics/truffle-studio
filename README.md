@@ -127,7 +127,10 @@ in deliberately. Truffle menu work is independent and is not integrated.
 `truffle-studio --smoke` checks a clear-only presentation with no draw
 batches, exact opaque native background pixels at several window sizes,
 idle/minimize/restore/resize behavior, inert former UI input and native close
-routing. Host/font tests and independent CAD/kernel unit tests remain useful.
+routing. Studio keeps SDL window/event ownership and uses Truffle's optional
+`RendererPresentation` API for surface, swapchain, resize and frame pacing;
+the blank clear pass and Vulkan validation diagnostics remain Studio-owned.
+Host/font tests and independent CAD/kernel unit tests remain useful.
 
 ## Documentation
 

@@ -1,5 +1,22 @@
 # Handoff
 
+## Truffle presentation integration (#24)
+
+Studio now uses Truffle's optional `Truffle::RendererPresentation` API for
+surface/swapchain setup, resize/recreation, zero-size suspension and frame
+pacing. SDL remains the owner of the native window and event loop; Studio
+borrows its existing Vulkan-validated (Windows) or Metal (macOS) device and
+keeps the clear-only pass, blank pixel readback, lifecycle and diagnostics
+smoke checks. No GUI, viewport, menu or CAD scene is constructed.
+
+The Truffle submodule is pinned to signed/pushed `79aad7a09e306bc8eed8588fed381225fedf3308`
+on `feat/gui-menus`, which includes presentation support (#270) and the
+viewport API (#271). Studio only uses the presentation API. Validation for
+this integration is intentionally limited: the Studio app translation unit
+compiles with the existing Windows Debug flags against the pinned headers.
+The executable was not linked, and no full build, test suite, or native
+Vulkan/Metal pixel smoke is claimed.
+
 ## Blank Studio client for UI redesign (#23)
 
 The owner requested a genuinely blank client background: no panels,

@@ -4,7 +4,7 @@
 #include "model/document.hpp"
 #include "studio/check.hpp"
 
-#include "truffle/renderer/frame_stream.hpp"
+#include "truffle/renderer/presentation.hpp"
 #include "truffle/renderer/renderer.hpp"
 #if defined(_WIN32)
 #include "truffle/rhi/vulkan_backend.hpp"
@@ -62,65 +62,88 @@ public:
 class Presenter {
 public:
     Presenter(rhi::Device& device, rhi::NativeSurface native, rhi::Extent2D extent)
-        : device_(&device), renderer_(device),
-          pacer_(need(renderer::FramePacer::create(device, 2))) {
-        surface_ = need(device.create_surface({
-            .native = native,
-            .initialExtent = extent}));
-        swapchain_ = need(device.create_swapchain(
-            surface_, {.extent = extent, .format = rhi::TextureFormat::bgra8_unorm}));
+        : native_(native),
+          presentation_(need(renderer::Presentation::create(device, {
+              .native = native,
+              .extent = extent,
+              .format = rhi::TextureFormat::bgra8_unorm,
+          }))),
+          renderer_(device) {}
+    ~Presenter() {
+        const auto status = presentation_.wait_idle();
+        if (!status.ok()) {
+            std::cerr << "Studio presentation idle wait failed: " << status.message << '\n';
+        }
     }
-    ~Presenter() { static_cast<void>(pacer_.wait_idle()); }
     Presenter(const Presenter&) = delete;
     Presenter& operator=(const Presenter&) = delete;
 
     std::size_t frames() const noexcept { return frames_; }
 
+    void suspend() {
+        const rhi::Extent2D extent{};
+        if (presentation_.desc().extent != extent) { need(presentation_.resize(extent)); }
+    }
+
     bool draw(rhi::Extent2D extent) {
-        if (swapchain_.desc().extent != extent) {
-            need(pacer_.wait_idle());
-            need(swapchain_.resize(extent));
+        if (presentation_.desc().extent != extent) {
+            need(presentation_.resize(extent));
         }
-        static_cast<void>(need(pacer_.begin_frame()));
+        auto frame = presentation_.begin_frame();
+        if (!frame.ok()) {
+            const auto& status = frame.status();
+            if (status.code == truffle::base::StatusCode::surface_lost) {
+                need(presentation_.replace_surface(native_, extent));
+                return false;
+            }
+            if (status.code == truffle::base::StatusCode::out_of_date ||
+                status.code == truffle::base::StatusCode::suboptimal) {
+                return false;
+            }
+            need(status);
+        }
+
         renderer::FrameGraph graph;
-        graph.add_node(clear_pass());
-        const auto status = renderer_.render(graph, &swapchain_, pacer_.signal());
-        pacer_.end_frame(renderer_.last_frame_stats().submitted);
-        if (status.code == truffle::base::StatusCode::out_of_date) {
-            need(pacer_.wait_idle());
-            need(swapchain_.resize(extent));
+        graph.add_node(clear_pass(frame.value().extent));
+        const auto status = presentation_.render(renderer_, graph);
+        if (presentation_.last_frame_stats().presented) { ++frames_; }
+        if (status.code == truffle::base::StatusCode::surface_lost) {
+            need(presentation_.replace_surface(native_, extent));
+            return false;
+        }
+        if (status.code == truffle::base::StatusCode::out_of_date ||
+            status.code == truffle::base::StatusCode::suboptimal) {
             return false;
         }
         need(status);
-        ++frames_;
         return true;
     }
 
     void check_blank_for_smoke() {
-        need(pacer_.wait_idle());
-        const auto& stats = renderer_.last_frame_stats();
+        need(presentation_.wait_idle());
+        const auto& stats = presentation_.last_frame_stats();
         expect(stats.presented && stats.renderNodesExecuted == 1 &&
                    stats.renderBatchesExecuted == 0 && stats.computeNodesExecuted == 0,
                "the client frame was not a single clear-only presentation");
 
-        const auto extent = swapchain_.desc().extent;
-        auto texture = need(device_->create_texture({
+        const auto extent = presentation_.desc().extent;
+        auto texture = need(presentation_.device().create_texture({
             .extent = {extent.width, extent.height, 1},
             .format = rhi::TextureFormat::bgra8_unorm,
             .usage = rhi::TextureUsage::color_attachment | rhi::TextureUsage::copy_source}));
         renderer::FrameGraph graph;
         // Read the same pass used for presentation, without swapchain readback assumptions.
-        graph.add_node(clear_pass(&texture));
+        graph.add_node(clear_pass(extent, &texture));
         need(renderer_.render(graph));
         const std::size_t row = static_cast<std::size_t>(extent.width) * 4;
         std::vector<std::byte> pixels(row * extent.height);
-        auto buffer = need(device_->create_buffer({
+        auto buffer = need(presentation_.device().create_buffer({
             .size = pixels.size(), .usage = rhi::BufferUsage::copy_destination,
             .memory = rhi::MemoryDomain::readback}));
-        auto queue = need(device_->queue(rhi::QueueKind::graphics));
-        auto pool = need(device_->create_command_pool(rhi::QueueKind::graphics));
+        auto queue = need(presentation_.device().queue(rhi::QueueKind::graphics));
+        auto pool = need(presentation_.device().create_command_pool(rhi::QueueKind::graphics));
         auto list = need(pool.allocate());
-        auto fence = need(device_->create_fence());
+        auto fence = need(presentation_.device().create_fence());
         need(list.begin());
         need(list.barrier({.textures = {{
             .texture = &texture,
@@ -148,9 +171,13 @@ public:
                   << " BGRA=15,13,13,255\n";
     }
 
+    void wait_idle() { need(presentation_.wait_idle()); }
+
 private:
-    static std::unique_ptr<renderer::RenderPassNode> clear_pass(rhi::Texture* target = nullptr) {
+    static std::unique_ptr<renderer::RenderPassNode> clear_pass(
+        rhi::Extent2D extent, rhi::Texture* target = nullptr) {
         rhi::RenderPassDesc desc{
+            .extent = {extent.width, extent.height},
             .colorAttachments = {{.texture = target, .clear = background}}};
         if (target) {
             desc.extent = {target->desc().extent.width, target->desc().extent.height};
@@ -169,11 +196,9 @@ private:
         return pass;
     }
 
-    rhi::Device* device_;
-    rhi::Surface surface_;
-    rhi::Swapchain swapchain_;
+    rhi::NativeSurface native_;
+    renderer::Presentation presentation_;
     renderer::Renderer renderer_;
-    renderer::FramePacer pacer_;
     std::size_t frames_ = 0;
 };
 
@@ -230,6 +255,7 @@ int run(const AppOptions& options) {
     };
     const auto iterate = [&](std::optional<std::chrono::milliseconds> cap) {
         const bool drawable = window.metrics().has_value();
+        if (!drawable) { presenter.suspend(); }
         const std::int32_t timeout = drawable && redraw ? 0
             : cap ? static_cast<std::int32_t>(cap->count()) : -1;
         SDL_Event event{};
@@ -360,6 +386,7 @@ int run(const AppOptions& options) {
         std::cout << "studio blank smoke: frames=" << presenter.frames()
                   << " no UI batches; input inert; lifecycle passed\n";
     }
+    presenter.wait_idle();
     return 0;
 }
 

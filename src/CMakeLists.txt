@@ -35,7 +35,8 @@ add_executable(truffle_studio
     studio/cad/sketch_editor.cpp)
 target_include_directories(truffle_studio PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(truffle_studio PRIVATE
-    studio_model studio_features Truffle::GUIDock Truffle::GUI Truffle::Renderer SDL3::SDL3-static
+    studio_model studio_features Truffle::GUIDock Truffle::GUI Truffle::Renderer
+    Truffle::RendererPresentation SDL3::SDL3-static
     ${studio_native_libraries})
 target_compile_options(truffle_studio PRIVATE "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
 studio_target_warnings(truffle_studio)
