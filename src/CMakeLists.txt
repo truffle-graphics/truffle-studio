@@ -17,27 +17,17 @@ studio_target_warnings(studio_features)
 
 if(TFLST_BUILD_APP)
 if(WIN32)
-    set(studio_font_source host/system_font_win32.cpp)
-    set(studio_native_libraries Truffle::BackendVulkan gdi32 user32)
+    set(studio_platform_libraries gdi32 user32)
 else()
-    set(studio_font_source host/system_font.mm)
-    set(studio_native_libraries Truffle::BackendMetal "-framework CoreText" "-framework Foundation")
+    set(studio_platform_libraries "-framework Foundation")
 endif()
 add_executable(truffle_studio
     main.cpp
     host/sdl_window.cpp
-    ${studio_font_source}
-    studio/app.cpp
-    studio/scene_view.cpp
-    studio/shell.cpp
-    studio/cad/cad_workspace.cpp
-    studio/cad/model_view.cpp
-    studio/cad/sketch_editor.cpp)
+    studio/app.cpp)
 target_include_directories(truffle_studio PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(truffle_studio PRIVATE
-    studio_model studio_features Truffle::GUIDock Truffle::GUI Truffle::Renderer
-    Truffle::RendererPresentation SDL3::SDL3-static
-    ${studio_native_libraries})
+    studio_model Truffle::GUI SDL3::SDL3-static ${studio_platform_libraries})
 target_compile_options(truffle_studio PRIVATE "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
 studio_target_warnings(truffle_studio)
 set_target_properties(truffle_studio PROPERTIES OUTPUT_NAME truffle-studio

@@ -114,17 +114,20 @@ SdlWindow::SdlWindow(const char* title, int width, int height) {
     }
 #if defined(__APPLE__)
     view_ = SDL_Metal_CreateView(window_);
-    layer_ = view_ != nullptr ? SDL_Metal_GetLayer(view_) : nullptr;
-    if (layer_ == nullptr) {
+    native_handle_ = view_ != nullptr ? SDL_Metal_GetLayer(view_) : nullptr;
+    if (native_handle_ == nullptr) {
         const std::string error = SDL_GetError();
         if (view_ != nullptr) { SDL_Metal_DestroyView(view_); }
         SDL_DestroyWindow(window_);
         throw std::runtime_error("SDL Metal view creation failed: " + error);
     }
 #else
-    layer_ = SDL_GetPointerProperty(SDL_GetWindowProperties(window_),
-                                    SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
-    if (layer_ == nullptr) {
+    const auto properties = SDL_GetWindowProperties(window_);
+    native_handle_ = SDL_GetPointerProperty(properties,
+                                             SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+    display_ = SDL_GetPointerProperty(properties,
+                                      SDL_PROP_WINDOW_WIN32_INSTANCE_POINTER, nullptr);
+    if (native_handle_ == nullptr) {
         SDL_DestroyWindow(window_);
         throw std::runtime_error("SDL window has no native Win32 handle");
     }
@@ -143,14 +146,15 @@ SdlWindow::~SdlWindow() {
     SDL_DestroyWindow(window_);
 }
 
-truffle::rhi::NativeSurface SdlWindow::surface_handle() const noexcept {
+gui::WindowHandle SdlWindow::window_handle() const noexcept {
     return {
 #if defined(__APPLE__)
-        .kind = truffle::rhi::NativeSurfaceKind::cocoa_layer,
+        .kind = gui::WindowKind::cocoa_layer,
 #else
-        .kind = truffle::rhi::NativeSurfaceKind::win32,
+        .kind = gui::WindowKind::win32,
 #endif
-        .handle = layer_};
+        .handle = native_handle_,
+        .display = display_};
 }
 
 std::optional<WindowMetrics> SdlWindow::metrics() const {

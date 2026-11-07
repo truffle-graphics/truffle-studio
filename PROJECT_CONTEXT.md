@@ -25,10 +25,12 @@ See [ADR 0001](docs/adr/0001-workspace-application.md).
 ## Current presentation
 
 The owner requested a blank client background while Studio's UI is
-redesigned (#23). Startup constructs only the native host, clear-only
-presenter and document: no GUI context, shell, workspace, panels, widgets,
-sketch canvas, fonts or 3D scene. Application editing input is deliberately
-inactive; native window chrome and lifecycle remain.
+redesigned (#23). Startup constructs only the SDL host, a GUI-owned
+`gui::Application` and the document: no shell, workspace, panels, widgets,
+sketch canvas, fonts or 3D scene. The GUI root is empty and transparent; the
+application owns its graphics device and paints only the dark client clear.
+Application editing input is deliberately inactive; SDL retains native
+window/event ownership and lifecycle.
 
 The CAD/workspace implementation and independent document, solver, feature,
 kernel and camera tests are preserved for reuse, not hidden interactive UI.
@@ -39,8 +41,12 @@ are not integrated in this reset.
 ## Boundaries
 
 - Studio owns windowing (SDL3), the event loop, fonts, documents and all
-  application state. Truffle provides graphics, rendering and GUI libraries.
-- Studio uses Truffle only through public headers and CMake targets.
+  application state. Truffle's GUI-owned application API provides normal
+  application presentation and owns the graphics consumers. Renderer and RHI
+  are not used directly by the normal Studio app.
+- Studio uses Truffle only through public GUI headers and CMake targets for
+  normal application work. Specialist access belongs only in narrowly scoped
+  diagnostics or test code when the public consumer API lacks a capability.
 - When Studio needs something reusable from Truffle, file a Truffle issue and
   implement it there. Do not build Truffle-shaped workarounds inside Studio,
   and do not push application concepts into Truffle.
@@ -76,6 +82,10 @@ native lifecycle instead. Windows
 graphics evidence is the local RTX 4080 SUPER run, not
 software-driver/ARM64/physical-reset coverage. macOS
 Metal paths are preserved but were not rerun from this Windows machine.
+The GUI-owned migration (#26) has not yet been verified on either native
+backend. Its application API exposes validation enablement but not a custom
+Vulkan diagnostics callback, and does not expose the presented image for
+pixel readback; see `docs/handoff.md`.
 Studio-owned build options and configuration use the `TFLST_` prefix;
 Truffle-owned options retain `TFL_`. No compatibility aliases are added
 before the first release.

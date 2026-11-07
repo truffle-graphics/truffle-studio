@@ -9,7 +9,7 @@ if(WIN32 AND TFLST_BUILD_APP)
     add_executable(studio_host_tests main.cpp host_tests.cpp
         ../src/host/sdl_window.cpp ../src/host/system_font_win32.cpp)
     target_link_libraries(studio_host_tests PRIVATE studio_model Truffle::GUI
-        Truffle::BackendVulkan SDL3::SDL3-static gdi32 user32)
+        SDL3::SDL3-static gdi32 user32)
     studio_target_warnings(studio_host_tests)
     add_test(NAME studio_win32_host COMMAND studio_host_tests)
     set_tests_properties(studio_win32_host PROPERTIES LABELS "native-smoke;host-window" TIMEOUT 30)

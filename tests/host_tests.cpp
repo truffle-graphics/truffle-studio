@@ -2,7 +2,6 @@
 #include "host/sdl_window.hpp"
 #include "host/system_font.hpp"
 #include "studio/check.hpp"
-#include "truffle/rhi/vulkan_backend.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -15,8 +14,8 @@ TEST(win32_host_input) {
     {
         studio::SdlWindow window("Studio host test", 640, 480);
         SDL_HideWindow(window.native());
-        CHECK(window.surface_handle().kind == truffle::rhi::NativeSurfaceKind::win32);
-        CHECK(window.surface_handle().handle != nullptr);
+        CHECK(window.window_handle().kind == gui::WindowKind::win32);
+        CHECK(window.window_handle().handle != nullptr);
         CHECK(window.metrics().has_value());
         std::vector<gui::InputEvent> inputs;
         const auto forward = [&](const gui::InputEvent& input) { inputs.push_back(input); };
@@ -82,10 +81,7 @@ TEST(win32_host_input) {
 }
 
 TEST(win32_system_font) {
-    auto instance = studio::need(truffle::rhi::create_vulkan_instance({.enableValidation = true}));
-    auto adapter = studio::need(instance.adapter(0));
-    auto device = studio::need(adapter.request_device());
-    auto text = studio::need(gui::TextEngine::create(device));
+    gui::TextEngine text;
     const auto font = studio::load_system_font(text, 13);
     for (const char* sample : {"Studio", "\xD7\x90", "\xD8\xA7", "\xE6\x97\xA5\xE6\x9C\xAC"}) {
         const auto shaped = studio::need(text.shape(font, sample));

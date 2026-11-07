@@ -1,6 +1,41 @@
 # Handoff
 
-## Truffle presentation integration (#24)
+## GUI-owned Studio application (#26)
+
+Studio now builds only the SDL host and a GUI-owned `gui::Application`,
+linking `Truffle::GUI` rather than Renderer, Presentation, dock, backend,
+font or scene targets. SDL still owns the native window, input and event
+loop; Studio passes an HWND/HINSTANCE pair on Windows or SDL's CAMetalLayer
+on macOS, with pixel size and DPI. The GUI root remains empty and transparent,
+and the application clear retains the opaque dark client background. Legacy
+shell, CAD and scene files remain in the tree but are not part of the app.
+
+The Truffle submodule is pinned to
+`99a585723cb7a4f944d5eb817cc5bc786ef03830` on `feat/gui-menus`, including
+the consumer APIs (#274-#277). The smoke keeps scheduling, blank GUI batch,
+inert input, minimize/restore, resize, close routing and validation-layer
+activation checks. Studio's GUI application API does not expose the presented
+swapchain image for test readback, so the former exact pixel readback is not
+available without a Truffle API addition; the current smoke verifies reported
+presentation and zero GUI batches, not actual on-screen pixel values. The
+application API exposes a validation enable flag but no diagnostics callback;
+smoke requests validation and retains the VUID failure match, but Studio
+cannot install its former custom Vulkan diagnostics callback.
+
+Only the smoke's frame/reporting checks run through GUI public types. The
+native presentation internals and graphics device are not reached from normal
+Studio code. A device-loss result is surfaced as a fatal restart-required
+error; surface loss attempts `replace_window` against the still-live SDL
+window. The GUI application owns one Context/GUI stream; independently paced
+detached windows sharing a context remain an open Truffle design question
+(#276), not addressed by Studio.
+
+Validation is intentionally limited: `app.cpp`, `sdl_window.cpp` and
+`host_tests.cpp` compile against the pinned headers. No executable link, test
+suite, native smoke or Metal/Vulkan pixel test is claimed. The old exact pixel
+readback could not be preserved through the exposed GUI-owned API.
+
+## Earlier Truffle presentation integration (#24)
 
 Studio now uses Truffle's optional `Truffle::RendererPresentation` API for
 surface/swapchain setup, resize/recreation, zero-size suspension and frame

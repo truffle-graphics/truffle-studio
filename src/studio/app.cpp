@@ -4,36 +4,25 @@
 #include "model/document.hpp"
 #include "studio/check.hpp"
 
-#include "truffle/renderer/presentation.hpp"
-#include "truffle/renderer/renderer.hpp"
-#if defined(_WIN32)
-#include "truffle/rhi/vulkan_backend.hpp"
-#else
-#include "truffle/rhi/metal_backend.hpp"
-#endif
+#include "truffle/gui/application.hpp"
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <array>
-#include <atomic>
 #include <chrono>
-#include <cstddef>
 #include <cstdint>
 #include <iostream>
-#include <memory>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <utility>
-#include <vector>
 
 namespace studio {
-namespace renderer = truffle::renderer;
-namespace rhi = truffle::rhi;
+namespace gui = truffle::gui;
 
 namespace {
-constexpr rhi::ClearColor background{13.0F / 255, 13.0F / 255, 15.0F / 255, 1};
-constexpr std::array background_bgra{std::byte{15}, std::byte{13}, std::byte{13}, std::byte{255}};
+constexpr gui::Color background{13.0F / 255, 13.0F / 255, 15.0F / 255, 1};
 #if defined(_WIN32)
 constexpr SDL_Keymod shortcut_modifier = SDL_KMOD_CTRL;
 #else
@@ -47,7 +36,6 @@ void expect(bool value, const char* message) {
 class SdlSession {
 public:
     explicit SdlSession(bool smoke) {
-        // A smoke run must not take focus or a Dock icon from the developer.
         if (smoke) { SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1"); }
         if (!SDL_Init(SDL_INIT_VIDEO)) {
             throw std::runtime_error(std::string("SDL initialization failed: ") + SDL_GetError());
@@ -58,149 +46,47 @@ public:
     SdlSession& operator=(const SdlSession&) = delete;
 };
 
-// The client area is only a clear pass; legacy UI is never constructed.
-class Presenter {
-public:
-    Presenter(rhi::Device& device, rhi::NativeSurface native, rhi::Extent2D extent)
-        : native_(native),
-          presentation_(need(renderer::Presentation::create(device, {
-              .native = native,
-              .extent = extent,
-              .format = rhi::TextureFormat::bgra8_unorm,
-          }))),
-          renderer_(device) {}
-    ~Presenter() {
-        const auto status = presentation_.wait_idle();
-        if (!status.ok()) {
-            std::cerr << "Studio presentation idle wait failed: " << status.message << '\n';
+std::size_t draw_if_needed(gui::Application& application, const SdlWindow& window) {
+    const auto now = gui::Context::Clock::now();
+    if (!application.needs_frame(now)) { return 0; }
+    const auto status = application.draw(now);
+    if (status.code == truffle::base::StatusCode::surface_lost) {
+        const auto metrics = window.metrics();
+        if (!metrics) {
+            throw std::runtime_error("Truffle GUI surface was lost without a drawable window");
         }
-    }
-    Presenter(const Presenter&) = delete;
-    Presenter& operator=(const Presenter&) = delete;
-
-    std::size_t frames() const noexcept { return frames_; }
-
-    void suspend() {
-        const rhi::Extent2D extent{};
-        if (presentation_.desc().extent != extent) { need(presentation_.resize(extent)); }
-    }
-
-    bool draw(rhi::Extent2D extent) {
-        if (presentation_.desc().extent != extent) {
-            need(presentation_.resize(extent));
-        }
-        auto frame = presentation_.begin_frame();
-        if (!frame.ok()) {
-            const auto& status = frame.status();
-            if (status.code == truffle::base::StatusCode::surface_lost) {
-                need(presentation_.replace_surface(native_, extent));
-                return false;
-            }
-            if (status.code == truffle::base::StatusCode::out_of_date ||
-                status.code == truffle::base::StatusCode::suboptimal) {
-                return false;
-            }
-            need(status);
-        }
-
-        renderer::FrameGraph graph;
-        graph.add_node(clear_pass(frame.value().extent));
-        const auto status = presentation_.render(renderer_, graph);
-        if (presentation_.last_frame_stats().presented) { ++frames_; }
-        if (status.code == truffle::base::StatusCode::surface_lost) {
-            need(presentation_.replace_surface(native_, extent));
-            return false;
-        }
-        if (status.code == truffle::base::StatusCode::out_of_date ||
-            status.code == truffle::base::StatusCode::suboptimal) {
-            return false;
-        }
+        need(application.replace_window(window.window_handle(), metrics->pixels, metrics->scale));
+        return 0;
+    } else if (status.code == truffle::base::StatusCode::device_lost) {
+        throw std::runtime_error(
+            "Truffle GUI device was lost; restart Studio to recreate its GPU consumers");
+    } else {
         need(status);
-        return true;
     }
+    return application.last_frame_stats().presented ? 1 : 0;
+}
 
-    void check_blank_for_smoke() {
-        need(presentation_.wait_idle());
-        const auto& stats = presentation_.last_frame_stats();
-        expect(stats.presented && stats.renderNodesExecuted == 1 &&
-                   stats.renderBatchesExecuted == 0 && stats.computeNodesExecuted == 0,
-               "the client frame was not a single clear-only presentation");
+void check_blank_for_smoke(gui::Application& application) {
+    need(application.wait_idle());
+    const auto stats = application.last_frame_stats();
+    expect(stats.presented && stats.batches == 0,
+           "the client was not a blank GUI-only presentation");
+}
 
-        const auto extent = presentation_.desc().extent;
-        auto texture = need(presentation_.device().create_texture({
-            .extent = {extent.width, extent.height, 1},
-            .format = rhi::TextureFormat::bgra8_unorm,
-            .usage = rhi::TextureUsage::color_attachment | rhi::TextureUsage::copy_source}));
-        renderer::FrameGraph graph;
-        // Read the same pass used for presentation, without swapchain readback assumptions.
-        graph.add_node(clear_pass(extent, &texture));
-        need(renderer_.render(graph));
-        const std::size_t row = static_cast<std::size_t>(extent.width) * 4;
-        std::vector<std::byte> pixels(row * extent.height);
-        auto buffer = need(presentation_.device().create_buffer({
-            .size = pixels.size(), .usage = rhi::BufferUsage::copy_destination,
-            .memory = rhi::MemoryDomain::readback}));
-        auto queue = need(presentation_.device().queue(rhi::QueueKind::graphics));
-        auto pool = need(presentation_.device().create_command_pool(rhi::QueueKind::graphics));
-        auto list = need(pool.allocate());
-        auto fence = need(presentation_.device().create_fence());
-        need(list.begin());
-        need(list.barrier({.textures = {{
-            .texture = &texture,
-            .oldLayout = rhi::TextureLayout::color_attachment,
-            .newLayout = rhi::TextureLayout::transfer_source,
-            .sourceStages = rhi::PipelineStage::color_attachment_output,
-            .destinationStages = rhi::PipelineStage::copy,
-            .sourceAccess = rhi::Access::color_attachment_write,
-            .destinationAccess = rhi::Access::transfer_read}}}));
-        auto copy = need(list.begin_copy());
-        need(copy.copy_texture_to_buffer(texture, buffer,
-            {.layout = {.bytesPerRow = row}, .texture = {.extent = texture.desc().extent}}));
-        need(copy.end());
-        need(list.end());
-        std::array<rhi::CommandList*, 1> lists{&list};
-        need(queue.submit(lists, &fence, 1));
-        need(fence.wait(1, std::chrono::seconds(10)));
-        need(buffer.read(0, pixels));
-        expect(!pixels.empty(), "the blank background has no native pixels");
-        for (std::size_t i = 0; i < pixels.size(); ++i) {
-            expect(pixels[i] == background_bgra[i % 4],
-                   "the native background is not uniformly opaque and blank");
-        }
-        std::cout << "studio blank pixels: " << extent.width << 'x' << extent.height
-                  << " BGRA=15,13,13,255\n";
+std::int32_t wait_timeout(gui::Application& application,
+                          std::optional<std::chrono::milliseconds> cap) {
+    using namespace std::chrono;
+    const auto now = gui::Context::Clock::now();
+    auto timeout = cap.value_or(milliseconds::max());
+    if (const auto next = application.next_update()) {
+        const auto until = std::chrono::ceil<milliseconds>(*next - now);
+        timeout = std::min(timeout, std::max(milliseconds::zero(), until));
     }
-
-    void wait_idle() { need(presentation_.wait_idle()); }
-
-private:
-    static std::unique_ptr<renderer::RenderPassNode> clear_pass(
-        rhi::Extent2D extent, rhi::Texture* target = nullptr) {
-        rhi::RenderPassDesc desc{
-            .extent = {extent.width, extent.height},
-            .colorAttachments = {{.texture = target, .clear = background}}};
-        if (target) {
-            desc.extent = {target->desc().extent.width, target->desc().extent.height};
-        }
-        auto pass = std::make_unique<renderer::RenderPassNode>(
-            std::move(desc), std::vector<renderer::RenderBatch>{}, target == nullptr);
-        if (target) {
-            pass->transition_before({
-                .texture = target,
-                .oldLayout = rhi::TextureLayout::undefined,
-                .newLayout = rhi::TextureLayout::color_attachment,
-                .sourceStages = rhi::PipelineStage::top,
-                .destinationStages = rhi::PipelineStage::color_attachment_output,
-                .destinationAccess = rhi::Access::color_attachment_write});
-        }
-        return pass;
-    }
-
-    rhi::NativeSurface native_;
-    renderer::Presentation presentation_;
-    renderer::Renderer renderer_;
-    std::size_t frames_ = 0;
-};
+    if (application.needs_frame(now)) { return 0; }
+    if (timeout == milliseconds::max()) { return -1; }
+    return static_cast<std::int32_t>(std::clamp<std::int64_t>(
+        timeout.count(), 0, std::numeric_limits<std::int32_t>::max()));
+}
 
 void push_shortcut(const SdlWindow& window, SDL_Keycode key, SDL_Keymod mod) {
     SDL_Event event{};
@@ -216,33 +102,31 @@ void push_shortcut(const SdlWindow& window, SDL_Keycode key, SDL_Keymod mod) {
 } // namespace
 
 int run(const AppOptions& options) {
-    std::atomic_size_t diagnostics{0};
     SdlSession session(options.smoke);
     SdlWindow window("Truffle Studio", 1280, 800);
-#if defined(_WIN32)
-    auto instance = need(rhi::create_vulkan_instance({
-        .enableValidation = options.smoke,
-        .debugCallback = [](const rhi::BackendDiagnostic& detail, void* user) {
-            static_cast<std::atomic_size_t*>(user)->fetch_add(1);
-            std::cerr << "Studio graphics diagnostic: " << detail.message << '\n';
-        },
-        .debugUserData = &diagnostics}));
-#else
-    auto instance = need(rhi::create_metal_instance());
-#endif
-    auto adapter = need(instance.adapter(0));
-    if (options.smoke) { std::cout << "Studio native adapter: " << adapter.info().name << '\n'; }
-    auto device = need(adapter.request_device({.requiredFeatures = {rhi::Feature::presentation}}));
     const auto initial = window.metrics();
     if (!initial) { throw std::runtime_error("the Studio window has no drawable area"); }
-    Presenter presenter(device, window.surface_handle(), initial->pixels);
+
+    auto application = need(gui::Application::create({
+        .window = window.window_handle(),
+        .pixels = initial->pixels,
+        .dpi_scale = initial->scale,
+        .host = &window,
+        .enable_validation = options.smoke,
+        .clear = background,
+    }));
     model::Document document;
 
     bool running = true;
-    bool redraw = true;
+    std::size_t frames = 0;
+    std::optional<WindowMetrics> configured = initial;
+    const auto forward_input = [&](const gui::InputEvent& input) {
+        need(application.handle(input));
+    };
     const auto dispatch = [&](const SDL_Event& event) {
         if (event.type == SDL_EVENT_QUIT ||
-            (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == window.id())) {
+            (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED &&
+             event.window.windowID == window.id())) {
             running = false;
             return;
         }
@@ -250,22 +134,31 @@ int run(const AppOptions& options) {
              event.type == SDL_EVENT_WINDOW_EXPOSED ||
              event.type == SDL_EVENT_WINDOW_RESTORED ||
              event.type == SDL_EVENT_WINDOW_SHOWN) && event.window.windowID == window.id()) {
-            redraw = true;
+            application.context().request_frame();
         }
+        window.translate(event, forward_input);
     };
     const auto iterate = [&](std::optional<std::chrono::milliseconds> cap) {
-        const bool drawable = window.metrics().has_value();
-        if (!drawable) { presenter.suspend(); }
-        const std::int32_t timeout = drawable && redraw ? 0
-            : cap ? static_cast<std::int32_t>(cap->count()) : -1;
         SDL_Event event{};
-        if (SDL_WaitEventTimeout(&event, timeout)) {
+        if (SDL_WaitEventTimeout(&event, wait_timeout(application, cap))) {
             dispatch(event);
             while (SDL_PollEvent(&event)) { dispatch(event); }
         }
         if (!running) { return; }
+
         const auto metrics = window.metrics();
-        if (metrics && redraw) { redraw = !presenter.draw(metrics->pixels); }
+        if (metrics) {
+            const bool changed = !configured ||
+                configured->pixels != metrics->pixels || configured->scale != metrics->scale;
+            if (changed) {
+                need(application.resize(metrics->pixels, metrics->scale));
+                configured = metrics;
+            }
+        } else if (configured) {
+            need(application.resize({}, configured->scale));
+            configured.reset();
+        }
+        frames += draw_if_needed(application, window);
     };
 
     if (!options.smoke) {
@@ -275,41 +168,43 @@ int run(const AppOptions& options) {
             for (int i = 0; i < 20; ++i) { iterate(std::chrono::milliseconds(5)); }
         };
         const auto check_blank = [&] {
-            redraw = true;
+            application.context().request_frame();
             settle();
-            presenter.check_blank_for_smoke();
+            check_blank_for_smoke(application);
             expect(!window.text_input_active(), "the blank window started a text editor");
         };
         settle();
-        expect(presenter.frames() > 0, "the window presented no frame");
-        const auto idle = presenter.frames();
+        expect(frames > 0, "the window presented no frame");
+        const auto idle = frames;
         settle();
-        expect(presenter.frames() == idle, "an idle blank window kept drawing");
+        expect(frames == idle, "an idle blank window kept drawing");
         check_blank();
 
 #if defined(_WIN32)
         expect(SDL_MinimizeWindow(window.native()), "could not minimize the smoke window");
         settle();
         expect(!window.metrics(), "a minimized window remained drawable");
-        const auto minimized = presenter.frames();
-        redraw = true;
+        const auto minimized = frames;
+        application.context().request_frame();
         settle();
-        expect(presenter.frames() == minimized, "a minimized blank window kept drawing");
+        expect(frames == minimized, "a minimized blank window kept drawing");
         expect(SDL_RestoreWindow(window.native()), "could not restore the smoke window");
         settle();
-        expect(window.metrics().has_value() && presenter.frames() > minimized,
+        expect(window.metrics().has_value() && frames > minimized,
                "restoring the window did not resume presentation");
         check_blank();
 #endif
-        for (const auto size : {rhi::Extent2D{1024, 700}, rhi::Extent2D{1600, 900},
-                                rhi::Extent2D{1280, 800}}) {
-            const auto before = presenter.frames();
+        for (const auto size : {gui::PixelSize{1024, 700}, gui::PixelSize{1600, 900},
+                                gui::PixelSize{1280, 800}}) {
+            const auto before = frames;
             expect(SDL_SetWindowSize(window.native(), static_cast<int>(size.width),
                                      static_cast<int>(size.height)),
                    "could not resize the smoke window");
             settle();
-            expect(presenter.frames() > before, "resizing did not redraw the blank window");
-            check_blank();
+            expect(frames > before, "resizing did not redraw the blank window");
+            const auto resized = window.metrics();
+            expect(resized.has_value(), "resized window has no drawable area");
+            check_blank_for_smoke(application);
         }
 
         expect(document.edit("Smoke document", [](model::DocumentState& state) {
@@ -364,12 +259,12 @@ int run(const AppOptions& options) {
         text.text.windowID = window.id();
         text.text.text = "No editor";
         expect(SDL_PushEvent(&text), "could not queue a text event");
-        const auto before_input = presenter.frames();
+        const auto before_input = frames;
         settle();
         expect(document.state() == saved && document.revision() == revision &&
                    document.can_undo() && !document.can_redo(),
                "legacy input changed the preserved document");
-        expect(presenter.frames() == before_input, "inert client input requested a frame");
+        expect(frames == before_input, "inert client input requested a frame");
         check_blank();
 
         SDL_Event close{};
@@ -382,11 +277,10 @@ int run(const AppOptions& options) {
         expect(SDL_PushEvent(&close), "could not queue the Studio close event");
         settle();
         expect(!running, "the native close event did not close Studio");
-        expect(diagnostics.load() == 0, "native rendering emitted diagnostics");
-        std::cout << "studio blank smoke: frames=" << presenter.frames()
-                  << " no UI batches; input inert; lifecycle passed\n";
+        std::cout << "studio blank smoke: frames=" << frames
+                  << " no GUI batches; input inert; lifecycle passed\n";
     }
-    presenter.wait_idle();
+    need(application.wait_idle());
     return 0;
 }
 
