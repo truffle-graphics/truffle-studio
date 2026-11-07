@@ -1,5 +1,27 @@
 # Handoff
 
+## Windows bring-up (#22): build and dependency foundation
+
+The owner approved Windows parity with existing macOS Studio functionality,
+Vulkan on Windows, and signed commits pushed between verified phases.
+`feature/windows-studio` builds on the pending CAD UI cleanup, preserving it.
+The Truffle pin advances to verified develop merge `0a1d93d`.
+
+PowerShell now initializes the existing MSVC x64 developer environment before
+Ninja discovery, checks tools, and prepares only pinned required submodules.
+Check mode performs no fetch/install; dirty submodules are not moved.
+OCCT builds Release DLLs in `out/debug/bin` and import libraries in
+`out/debug/lib`, keeping its existing isolated headers/build staging.
+All existing document, kernel, sketch, solver, camera and feature unit tests
+execute successfully on Windows with strict first-party MSVC warnings.
+
+The owner chose `TFLST_` for Studio-owned configuration (replacing `STUDIO_`);
+Truffle's `TFL_` options are unchanged. Build names and script warning toggles
+remain the same. Windows application execution is not claimed by this phase:
+the native GUI smoke exposed Truffle's Metal-only GUI programs. A separate
+Truffle session owns Vulkan GUI program support; Studio host/shader/font and
+end-to-end CAD parity validation follow. macOS was not rerun on Windows.
+
 ## Current state
 
 Usability-first CAD cleanup (#21) is approved for commit and push on

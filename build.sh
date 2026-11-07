@@ -22,8 +22,8 @@ while (( $# )); do
                 echo "--warnings-as-errors requires on or off." >&2; exit 2
             fi
             case "$2" in
-                on|ON) configure_args+=("-DSTUDIO_WARNINGS_AS_ERRORS=ON") ;;
-                off|OFF) configure_args+=("-DSTUDIO_WARNINGS_AS_ERRORS=OFF") ;;
+                on|ON) configure_args+=("-DTFLST_WARNINGS_AS_ERRORS=ON") ;;
+                off|OFF) configure_args+=("-DTFLST_WARNINGS_AS_ERRORS=OFF") ;;
                 *) echo "--warnings-as-errors requires on or off, not '$2'." >&2; exit 2 ;;
             esac
             shift 2 ;;

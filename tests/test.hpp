@@ -43,12 +43,12 @@ inline bool near(double a, double b, double tolerance = 1e-6) {
 
 } // namespace studio::test
 
-#define STUDIO_CONCAT2(a, b) a##b
-#define STUDIO_CONCAT(a, b) STUDIO_CONCAT2(a, b)
+#define TFLST_CONCAT2(a, b) a##b
+#define TFLST_CONCAT(a, b) TFLST_CONCAT2(a, b)
 #define TEST(name)                                                                       \
-    static void STUDIO_CONCAT(test_, name)();                                            \
-    static const ::studio::test::Register STUDIO_CONCAT(register_, name)(               \
-        #name, &STUDIO_CONCAT(test_, name));                                             \
-    static void STUDIO_CONCAT(test_, name)()
+    static void TFLST_CONCAT(test_, name)();                                            \
+    static const ::studio::test::Register TFLST_CONCAT(register_, name)(               \
+        #name, &TFLST_CONCAT(test_, name));                                             \
+    static void TFLST_CONCAT(test_, name)()
 #define CHECK(expression) ::studio::test::check((expression), #expression, __FILE__, __LINE__)
 #define CHECK_NEAR(a, b) CHECK(::studio::test::near((a), (b)))

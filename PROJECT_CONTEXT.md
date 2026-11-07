@@ -49,6 +49,14 @@ and patch changes are versioned and Studio adapts to Truffle releases.
 macOS on Apple Silicon with the Metal backend. Other platforms follow when
 Truffle's backends and Studio's host code are verified there.
 
+Windows x64 bring-up (#22) uses Vulkan, selected by the owner. Native
+PowerShell setup/build and OCCT/kernel verification are implemented; full
+GUI presentation depends on Truffle's Vulkan GUI programs. Studio owns its
+Windows host and font policy; no application workaround belongs in Truffle.
+Studio-owned build options and configuration use the `TFLST_` prefix;
+Truffle-owned options retain `TFL_`. No compatibility aliases are added
+before the first release.
+
 Native setup/build entry points use debug/release/relwithdebinfo CMake presets (#18).
 Final executables/libraries go to `out/<preset>/bin` and `lib`; OCCT
 headers/staging go to `install/<preset>/dependencies`, while its private build

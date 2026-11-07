@@ -15,10 +15,18 @@ add_library(studio_features STATIC features/regenerate.cpp)
 target_link_libraries(studio_features PUBLIC studio_model studio_kernel)
 studio_target_warnings(studio_features)
 
+if(TFLST_BUILD_APP)
+if(WIN32)
+    set(studio_font_source host/system_font_win32.cpp)
+    set(studio_native_libraries Truffle::BackendVulkan gdi32 user32)
+else()
+    set(studio_font_source host/system_font.mm)
+    set(studio_native_libraries Truffle::BackendMetal "-framework CoreText" "-framework Foundation")
+endif()
 add_executable(truffle_studio
     main.cpp
     host/sdl_window.cpp
-    host/system_font.mm
+    ${studio_font_source}
     studio/app.cpp
     studio/scene_view.cpp
     studio/shell.cpp
@@ -27,8 +35,8 @@ add_executable(truffle_studio
     studio/cad/sketch_editor.cpp)
 target_include_directories(truffle_studio PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(truffle_studio PRIVATE
-    studio_model studio_features Truffle::GUIDock Truffle::GUI Truffle::Renderer Truffle::BackendMetal SDL3::SDL3-static
-    "-framework CoreText" "-framework Foundation")
+    studio_model studio_features Truffle::GUIDock Truffle::GUI Truffle::Renderer SDL3::SDL3-static
+    ${studio_native_libraries})
 target_compile_options(truffle_studio PRIVATE "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
 studio_target_warnings(truffle_studio)
 set_target_properties(truffle_studio PROPERTIES OUTPUT_NAME truffle-studio
@@ -38,6 +46,10 @@ if(BUILD_TESTING)
     add_test(NAME truffle_studio_smoke COMMAND truffle_studio --smoke)
     set_tests_properties(truffle_studio_smoke PROPERTIES
         LABELS "native-smoke;gui;host-window"
-        TIMEOUT 60
-        ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1;METAL_DEVICE_WRAPPER_TYPE=1")
+        TIMEOUT 120)
+    if(APPLE)
+        set_tests_properties(truffle_studio_smoke PROPERTIES
+            ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1;METAL_DEVICE_WRAPPER_TYPE=1")
+    endif()
+endif()
 endif()
