@@ -33,6 +33,12 @@ No PR/merge, hosted work, version bump or macOS rerun is implied.
 
 ## Windows regression coverage and wrapper closeout (#22)
 
+Follow-up: PowerShell's implicit positional binding consumed `--parallel`
+as `WarningsAsErrors` when that option was omitted. Binding is now explicit:
+the preset and forwarded arguments are positional, warning policy is
+named-only. All ten isolated fixtures and the exact
+`.\build.ps1 debug --parallel 4` invocation pass.
+
 Native host/font tests and nine isolated PowerShell fixture cases are now
 part of CTest. Fixtures run from outside their temporary repository root,
 exercise help without tools, preserve build arguments and cached warning

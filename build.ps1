@@ -1,8 +1,10 @@
+[CmdletBinding(PositionalBinding = $false)]
 param(
+    [Parameter(Position = 0)]
     [string]$Preset = 'debug',
     [ValidateSet('on', 'off')]
     [string]$WarningsAsErrors,
-    [Parameter(ValueFromRemainingArguments = $true)]
+    [Parameter(Position = 1, ValueFromRemainingArguments = $true)]
     [string[]]$BuildArguments
 )
 $ErrorActionPreference = 'Stop'

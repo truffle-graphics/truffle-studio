@@ -84,6 +84,12 @@ class WindowsScripts(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertNotIn("WARNINGS_AS_ERRORS", self.calls())
 
+    def test_build_forwards_arguments_without_warning_option(self):
+        result = self.run_script("build.ps1", "debug", "--parallel", "4")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("--build --preset debug --parallel 4", self.calls())
+        self.assertNotIn("WARNINGS_AS_ERRORS", self.calls())
+
     def test_configure_failure_prevents_build(self):
         self.env["TFLST_TEST_FAIL"] = "configure"
         self.assertEqual(self.run_script("build.ps1").returncode, 41)
