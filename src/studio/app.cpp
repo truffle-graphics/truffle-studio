@@ -3,6 +3,7 @@
 #include "host/sdl_window.hpp"
 #include "model/document.hpp"
 #include "studio/check.hpp"
+#include "studio/smoke_readback.hpp"
 
 #include "truffle/gui/application.hpp"
 
@@ -47,35 +48,45 @@ public:
 };
 
 std::size_t draw_if_needed(gui::Application& application, const SdlWindow& window) {
+    if (!window.metrics()) { return 0; }
     const auto now = gui::Context::Clock::now();
     if (!application.needs_frame(now)) { return 0; }
     const auto status = application.draw(now);
+    const bool presented = application.last_frame_stats().presented;
     if (status.code == truffle::base::StatusCode::surface_lost) {
         const auto metrics = window.metrics();
         if (!metrics) {
-            throw std::runtime_error("Truffle GUI surface was lost without a drawable window");
+            return presented ? 1 : 0;
         }
         need(application.replace_window(window.window_handle(), metrics->pixels, metrics->scale));
-        return 0;
+        application.context().request_frame();
     } else if (status.code == truffle::base::StatusCode::device_lost) {
         throw std::runtime_error(
             "Truffle GUI device was lost; restart Studio to recreate its GPU consumers");
+    } else if (status.code == truffle::base::StatusCode::out_of_date ||
+               status.code == truffle::base::StatusCode::suboptimal) {
+        application.context().request_frame();
     } else {
         need(status);
     }
-    return application.last_frame_stats().presented ? 1 : 0;
+    return presented ? 1 : 0;
 }
 
-void check_blank_for_smoke(gui::Application& application) {
+void check_blank_for_smoke(gui::Application& application, gui::PixelSize pixels) {
     need(application.wait_idle());
     const auto stats = application.last_frame_stats();
     expect(stats.presented && stats.batches == 0,
            "the client was not a blank GUI-only presentation");
+    verify_clear_pixels(application, pixels, background);
 }
 
 std::int32_t wait_timeout(gui::Application& application,
+                          const SdlWindow& window,
                           std::optional<std::chrono::milliseconds> cap) {
     using namespace std::chrono;
+    if (!window.metrics()) {
+        return cap ? static_cast<std::int32_t>(cap->count()) : -1;
+    }
     const auto now = gui::Context::Clock::now();
     auto timeout = cap.value_or(milliseconds::max());
     if (const auto next = application.next_update()) {
@@ -140,7 +151,7 @@ int run(const AppOptions& options) {
     };
     const auto iterate = [&](std::optional<std::chrono::milliseconds> cap) {
         SDL_Event event{};
-        if (SDL_WaitEventTimeout(&event, wait_timeout(application, cap))) {
+        if (SDL_WaitEventTimeout(&event, wait_timeout(application, window, cap))) {
             dispatch(event);
             while (SDL_PollEvent(&event)) { dispatch(event); }
         }
@@ -158,7 +169,7 @@ int run(const AppOptions& options) {
             need(application.resize({}, configured->scale));
             configured.reset();
         }
-        frames += draw_if_needed(application, window);
+        if (metrics) { frames += draw_if_needed(application, window); }
     };
 
     if (!options.smoke) {
@@ -170,7 +181,9 @@ int run(const AppOptions& options) {
         const auto check_blank = [&] {
             application.context().request_frame();
             settle();
-            check_blank_for_smoke(application);
+            const auto metrics = window.metrics();
+            expect(metrics.has_value(), "the smoke window has no drawable area");
+            check_blank_for_smoke(application, metrics->pixels);
             expect(!window.text_input_active(), "the blank window started a text editor");
         };
         settle();
@@ -204,7 +217,7 @@ int run(const AppOptions& options) {
             expect(frames > before, "resizing did not redraw the blank window");
             const auto resized = window.metrics();
             expect(resized.has_value(), "resized window has no drawable area");
-            check_blank_for_smoke(application);
+            check_blank_for_smoke(application, resized->pixels);
         }
 
         expect(document.edit("Smoke document", [](model::DocumentState& state) {

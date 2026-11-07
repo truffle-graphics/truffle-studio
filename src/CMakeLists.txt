@@ -24,7 +24,8 @@ endif()
 add_executable(truffle_studio
     main.cpp
     host/sdl_window.cpp
-    studio/app.cpp)
+    studio/app.cpp
+    studio/smoke_readback.cpp)
 target_include_directories(truffle_studio PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(truffle_studio PRIVATE
     studio_model Truffle::GUI SDL3::SDL3-static ${studio_platform_libraries})

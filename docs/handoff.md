@@ -13,14 +13,26 @@ shell, CAD and scene files remain in the tree but are not part of the app.
 The Truffle submodule is pinned to
 `99a585723cb7a4f944d5eb817cc5bc786ef03830` on `feat/gui-menus`, including
 the consumer APIs (#274-#277). The smoke keeps scheduling, blank GUI batch,
-inert input, minimize/restore, resize, close routing and validation-layer
-activation checks. Studio's GUI application API does not expose the presented
-swapchain image for test readback, so the former exact pixel readback is not
-available without a Truffle API addition; the current smoke verifies reported
-presentation and zero GUI batches, not actual on-screen pixel values. The
-application API exposes a validation enable flag but no diagnostics callback;
-smoke requests validation and retains the VUID failure match, but Studio
-cannot install its former custom Vulkan diagnostics callback.
+inert input, minimize/restore, resize and close routing. `out_of_date` and
+`suboptimal` are recoverable: a frame reported as presented is counted even
+when the status is suboptimal, and a follow-up frame lets Truffle rebuild its
+presentation resources. The host skips drawing and ignores pending GUI frame
+requests while the SDL window has no drawable area, waiting for window events
+instead of spinning while minimized.
+
+The GUI-owned API does not expose the presented swapchain image, but the
+previous pixel smoke did not read it either. Its equivalent offscreen clear
+and BGRA readback is restored in `smoke_readback.cpp`, isolated from normal
+GUI setup and using the application's device through explicit Renderer/RHI
+interop. The application passes the same clear color; the check verifies
+uniform opaque BGRA 15,13,13,255 at the tested sizes.
+
+Smoke sets `enable_validation` for native Presentation. The inspected Vulkan
+backend conditionally enables `VK_LAYER_KHRONOS_validation` when installed,
+but does not create a debug messenger or use the RHI `InstanceDesc` callback.
+The GUI API cannot supply that callback, so there is no Studio diagnostic
+callback coverage and no claim that validation messages are captured; the
+CTest VUID failure match only detects output if some layer or runtime emits it.
 
 Only the smoke's frame/reporting checks run through GUI public types. The
 native presentation internals and graphics device are not reached from normal
@@ -30,10 +42,10 @@ window. The GUI application owns one Context/GUI stream; independently paced
 detached windows sharing a context remain an open Truffle design question
 (#276), not addressed by Studio.
 
-Validation is intentionally limited: `app.cpp`, `sdl_window.cpp` and
-`host_tests.cpp` compile against the pinned headers. No executable link, test
-suite, native smoke or Metal/Vulkan pixel test is claimed. The old exact pixel
-readback could not be preserved through the exposed GUI-owned API.
+Validation is intentionally limited: `app.cpp`, `sdl_window.cpp`,
+`host_tests.cpp` and the smoke-only `smoke_readback.cpp` compile against the
+pinned headers. No executable link, test suite, native smoke or Metal/Vulkan
+pixel test is claimed.
 
 ## Owner-approved GUI and CAD roadmap (#25)
 

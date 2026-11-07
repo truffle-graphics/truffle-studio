@@ -90,9 +90,11 @@ graphics evidence is the local RTX 4080 SUPER run, not
 software-driver/ARM64/physical-reset coverage. macOS
 Metal paths are preserved but were not rerun from this Windows machine.
 The GUI-owned migration (#26) has not yet been verified on either native
-backend. Its application API exposes validation enablement but not a custom
-Vulkan diagnostics callback, and does not expose the presented image for
-pixel readback; see `docs/handoff.md`.
+backend. Smoke can request validation, but Truffle's Vulkan backend does not
+create a debug messenger or use the custom diagnostics callback; the GUI API
+cannot provide that callback. The presented swapchain image is not exposed
+for readback; smoke-only explicit interop reads back a separate offscreen
+clear target. See `docs/handoff.md`.
 Studio-owned build options and configuration use the `TFLST_` prefix;
 Truffle-owned options retain `TFL_`. No compatibility aliases are added
 before the first release.
