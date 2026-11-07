@@ -25,18 +25,24 @@ See [ADR 0001](docs/adr/0001-workspace-application.md).
 ## Current presentation
 
 The owner requested a blank client background while Studio's UI is
-redesigned (#23). Startup constructs only the SDL host, a separate `gui::Context`, optional
-`gui::Graphics` and the document: no shell, workspace, panels, widgets,
-sketch canvas, fonts or 3D scene. The GUI root is empty and transparent; the
-application owns its graphics device and paints only the dark client clear.
-Application editing input is deliberately inactive; SDL retains native
-window/event ownership and lifecycle.
+redesigned (#23). The first GUI-only shell increment (#28) adds an in-client
+Truffle menu bar with File > Quit and Edit > Undo / Redo. The remainder is
+empty: no workspace, panels, sketch canvas or 3D scene. Startup constructs
+the SDL host, a separate `gui::Context`, optional `gui::Graphics`, a system
+font and the document. Truffle owns the graphics device and presentation;
+SDL retains native window/event ownership and lifecycle.
+
+Studio lets Truffle determine the menu bar, trigger, popup and item dimensions
+and padding; the root layout stretches the bar across the client. Studio
+still selects a 14-logical-unit system UI font because Truffle's text API
+requires a caller-supplied font size and currently has no font-size default.
+Menu actions and platform shortcuts use the same commands; history commands
+reflect availability and do not steal a focused text editor's shortcuts.
 
 The CAD/workspace implementation and independent document, solver, feature,
 kernel and camera tests are preserved for reuse, not hidden interactive UI.
 The workspace model above remains the product direction, not a description
-of currently available controls. Truffle's independently developed menus
-are not integrated in this reset.
+of currently available controls.
 
 ## Approved UI and CAD roadmap (#25)
 
@@ -83,20 +89,15 @@ Truffle's Vulkan GUI programs remain owned by Truffle; Studio owns its
 Windows host, GLSL scene sources and font policy. The sampled 3D viewport
 has native readback evidence; existing sketch/constraint/extrude/history,
 layout and orbit/pan/zoom smoke is shared with macOS. Native resize and
-minimize/restore also pass. That CAD/GUI evidence describes the former
-presentation; current app smoke checks the blank clear-only client and
-native lifecycle instead. Windows
-graphics evidence is the local RTX 4080 SUPER run, not
-software-driver/ARM64/physical-reset coverage. macOS
-Metal paths are preserved but were not rerun from this Windows machine.
-The Context/Graphics migration (#27) builds with warnings-as-errors and passes
-the macOS native smoke and unit tests on this machine; Windows native
-validation remains pending. Smoke can request validation, but Truffle's
-Vulkan backend does not
-create a debug messenger or use the custom diagnostics callback; the GUI API
-cannot provide that callback. The presented swapchain image is not exposed
-for readback; smoke-only explicit interop reads back a separate offscreen
-clear target. See `docs/handoff.md`.
+minimize/restore also passed for that former presentation. Windows graphics
+evidence is the local RTX 4080 SUPER run, not software-driver/ARM64/physical-
+reset coverage. The Context/Graphics migration (#27) and menu integration
+(#28) build and pass the native smoke and unit tests on macOS; Windows native
+validation for these changes remains pending. Smoke can request validation,
+but Truffle's Vulkan backend does not create a debug messenger or use the
+custom diagnostics callback; the GUI API cannot provide that callback. The
+presented swapchain image is not exposed for readback; smoke-only explicit
+interop reads back a separate offscreen GUI target. See `docs/handoff.md`.
 Studio-owned build options and configuration use the `TFLST_` prefix;
 Truffle-owned options retain `TFL_`. No compatibility aliases are added
 before the first release.

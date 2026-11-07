@@ -23,6 +23,7 @@ TEST(win32_host_input) {
         event.type = SDL_EVENT_KEY_DOWN;
         event.key.windowID = window.id() + 1;
         event.key.scancode = SDL_SCANCODE_Z;
+        event.key.key = SDLK_Z;
         event.key.down = true;
         window.translate(event, forward);
         CHECK(inputs.empty());
@@ -32,6 +33,7 @@ TEST(win32_host_input) {
         CHECK(inputs.size() == 1);
         const auto& key = std::get<gui::KeyEvent>(inputs.back());
         CHECK(key.key == gui::Key::z);
+        CHECK(key.native == SDLK_Z);
         CHECK(gui::has(key.modifiers, gui::Modifiers::control));
 
         event = {};

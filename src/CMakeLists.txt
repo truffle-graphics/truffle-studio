@@ -17,14 +17,19 @@ studio_target_warnings(studio_features)
 
 if(TFLST_BUILD_APP)
 if(WIN32)
+    set(studio_system_font host/system_font_win32.cpp)
     set(studio_platform_libraries gdi32 user32)
 else()
-    set(studio_platform_libraries "-framework Foundation")
+    set(studio_system_font host/system_font.mm)
+    set(studio_platform_libraries "-framework Foundation" "-framework CoreText")
 endif()
 add_executable(truffle_studio
     main.cpp
     host/sdl_window.cpp
+    ${studio_system_font}
     studio/app.cpp
+    studio/menu_bar.cpp
+    studio/menu_commands.cpp
     studio/smoke_readback.cpp)
 target_include_directories(truffle_studio PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(truffle_studio PRIVATE

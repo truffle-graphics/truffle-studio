@@ -219,7 +219,7 @@ void SdlWindow::translate(const SDL_Event& event, const Forward& forward) {
             !gui::has(mods, gui::Modifiers::control)) { return; }
         forward(gui::KeyEvent{.key = key_of(event.key.scancode), .down = event.key.down,
                               .repeat = event.key.repeat, .modifiers = mods,
-                              .native = static_cast<std::uint32_t>(event.key.scancode)});
+                              .native = static_cast<std::uint32_t>(event.key.key)});
         return;
     }
     case SDL_EVENT_TEXT_INPUT:

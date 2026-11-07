@@ -1,6 +1,29 @@
 # Handoff
 
-## Separating Studio Context and Graphics (#27)
+## Studio menu bar (#28)
+
+Studio composes Truffle's in-client `MenuBar`: File > Quit and Edit > Undo /
+Redo, with no placeholder entries. The document owns history, Studio owns
+actions and platform shortcuts, and Truffle owns the GUI controls. The rest
+of the client remains empty. Undo/Redo enabled state tracks document history,
+and their shortcuts do not override a focused text editor. SDL key codes
+make the displayed letter shortcuts follow the active keyboard layout while
+the GUI's named keys remain physical.
+
+The root layout stretches the bar across the client, but Studio does not
+override Truffle's menu bar, trigger, popup or item sizes or padding. The
+platform system font is still explicitly loaded at 14 logical units: Truffle
+requires a caller-supplied font size and does not provide a default yet.
+
+The incremental strict macOS Apple Silicon Debug build passed with
+warnings-as-errors. All three Studio CTests passed: native Metal menu smoke,
+document/CAD unit tests and focused menu command tests. The smoke exercises
+default layout and visible offscreen pixels, pointer and keyboard menus,
+history state, layout-aware shortcuts, idle/resize and close routing.
+Windows native build, Vulkan smoke and minimize/restore remain unverified
+for this increment; previous Windows results describe the older presentation.
+
+## Separating Studio Context and Graphics (#27, historical)
 
 Studio now constructs a host-owned `gui::Context` and a separate Truffle
 `gui::Graphics`. SDL remains responsible for the native window, input, event
@@ -357,11 +380,11 @@ sharing between them are planned, not implemented; see ADR 0001.
 
 ## Next
 
-Design Studio's replacement presentation from the blank background before
-reconnecting controls or integrating menus. Preserved CAD logic can be
-reused behind that design. Later CAD milestones (booleans between features,
-sketch on a face, save/load), optional workspace installation and data
-sharing remain separate planning work.
+Continue the approved GUI-only shell after the menu bar, without an interim
+Renderer-based CAD viewport. Preserved CAD logic can be reused behind the
+redesigned presentation. Later CAD milestones (booleans between features,
+sketch on a face, save/load), optional workspace installation and data sharing
+remain separate planning work.
 
 ## Risks
 
