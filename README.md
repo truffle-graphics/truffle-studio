@@ -11,9 +11,16 @@ Studio is Truffle's dogfooding application: features Studio needs drive Truffle
 work, which is tracked as Truffle issues. Truffle stays a library; Studio is
 the application.
 
-Status: early foundation. macOS (Apple Silicon) with Metal and Windows x64
-with Vulkan. Windows CAD/GUI native smoke is verified under #22; this is not
-an ARM64, software-driver or physical-GPU-reset claim.
+Status: early foundation, with a deliberately blank client background while
+Studio's UI is redesigned (#23). There are no application panels, buttons,
+menus, sketch grid/geometry or active editing shortcuts; the native window
+and title bar remain. CAD/document/kernel logic is retained for reuse, not
+exposed through hidden widgets.
+
+macOS (Apple Silicon) uses Metal and Windows x64 uses Vulkan. The former
+Windows CAD/GUI presentation was verified under #22; current smoke checks
+the blank background and native window lifecycle. This is not an ARM64,
+software-driver or physical-GPU-reset claim.
 
 ## Layout
 
@@ -108,22 +115,19 @@ git -C external/truffle checkout origin/develop
 git add external/truffle
 ```
 
-## CAD workspace
+## Preserved CAD foundation
 
-The Model panel creates sketches on XY, XZ or YZ and lists the document's
-features. Drawing directly in an empty sketch view starts an XY sketch.
-Extrude becomes available once the active sketch has a closed profile.
-Sketch/3D switches the viewport; Fit operates in the 3D view.
+The document/history model, XY/XZ/YZ sketches, constraint solver, feature
+regeneration, OpenCASCADE kernel and camera/geometry helpers remain in the
+source tree with their unit tests. Legacy shell/workspace/editor code is
+also retained, but the app does not construct it or render a scene. Former
+CAD UI workflows are unavailable until a redesigned presentation is wired
+in deliberately. Truffle menu work is independent and is not integrated.
 
-Drawing tools stay above the sketch canvas. Select geometry to reveal
-constraints in the Inspector; only commands suitable for the selection are
-enabled. Constraints reflow to one column in a narrow Inspector. The Inspector
-also shows sketch/feature details and the selected extrude's editable distance.
-Both side panels support scrolling.
-
-Undo/Redo follow document history. Reset layout is at the right of the status
-bar. Workspace switching appears only when more than one implemented workspace
-is registered; the normal application currently opens only CAD.
+`truffle-studio --smoke` checks a clear-only presentation with no draw
+batches, exact opaque native background pixels at several window sizes,
+idle/minimize/restore/resize behavior, inert former UI input and native close
+routing. Host/font tests and independent CAD/kernel unit tests remain useful.
 
 ## Documentation
 

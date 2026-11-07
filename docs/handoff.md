@@ -1,5 +1,50 @@
 # Handoff
 
+## Blank Studio client for UI redesign (#23)
+
+The owner requested a genuinely blank client background: no panels,
+toolbars, menus, buttons, workspace switcher, inspector/status controls,
+sketch grid/geometry or scene. Native OS window/title-bar controls remain.
+Startup now constructs only the native host, a clear-only presenter and
+the document. It does not construct a GUI context, load fonts, activate a
+workspace or translate editing input, so old widgets are not merely hidden.
+
+Document/history, sketch/constraint/solver, feature regeneration, kernel
+and camera/geometry logic and their unit tests remain unchanged. Legacy
+shell/workspace/editor/scene source is retained for deliberate reuse.
+Truffle menus are separate concurrent work and are not integrated here.
+
+The app smoke now checks a single presented clear pass with zero draw or
+compute batches, exact opaque BGRA background pixels at several sizes,
+idle/minimize/restore/resize behavior, inert former UI input with real
+document history and owner-window close routing.
+
+All 13 Studio-owned app/host translation units compile under MSVC Debug
+with `/WX`; the standard executable and host tests link successfully.
+The three relevant CTests pass: blank native smoke, all 46 retained core
+unit cases, and Win32 host/font checks. Native render-target readback is
+uniform BGRA 15,13,13,255 at 1280x800, 1024x700 and 1600x900; no graphics
+diagnostics are emitted with Vulkan validation requested. A screen capture
+of the normal 1280x800 client independently shows the same blank interior;
+only 36 pixels at Windows' rounded bottom corners are native compositor
+decoration. There is no application menu or native child control, and the
+normal window responds and exits successfully through its native close.
+
+Validation used the existing Debug dependencies and a coordinated coherent,
+in-progress Truffle menu header/library snapshot (rebuilt GUI/dock archives
+from `external/truffle/out/debug/lib`). No Truffle configuration, build,
+source change or gitlink staging was performed by this work. The Studio
+compile/link recipes were executed directly to avoid scheduling dependency
+rebuilds. This is Windows RTX 4080 SUPER evidence, not a full clean build or
+macOS rerun. The shared menu work is not claimed as delivered or integrated.
+
+Delivery is one signed issue-scoped commit, pushed immediately on
+`feature/windows-studio`. No PR, merge, branch cleanup or version bump is
+authorized.
+
+The sections below are historical delivery evidence. Their former visible
+CAD workflows are not current product behavior after this blank reset.
+
 ## Windows native host and CAD/GUI parity (#22)
 
 Windows uses SDL's borrowed HWND with the public Vulkan surface contract;
@@ -222,9 +267,11 @@ sharing between them are planned, not implemented; see ADR 0001.
 
 ## Next
 
-Plan the next CAD milestone (booleans between features, sketch on a face,
-save/load). Design optional workspace installation and cross-workspace data
-sharing separately when needed.
+Design Studio's replacement presentation from the blank background before
+reconnecting controls or integrating menus. Preserved CAD logic can be
+reused behind that design. Later CAD milestones (booleans between features,
+sketch on a face, save/load), optional workspace installation and data
+sharing remain separate planning work.
 
 ## Risks
 

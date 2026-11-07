@@ -22,6 +22,20 @@ exercised under real use.
 
 See [ADR 0001](docs/adr/0001-workspace-application.md).
 
+## Current presentation
+
+The owner requested a blank client background while Studio's UI is
+redesigned (#23). Startup constructs only the native host, clear-only
+presenter and document: no GUI context, shell, workspace, panels, widgets,
+sketch canvas, fonts or 3D scene. Application editing input is deliberately
+inactive; native window chrome and lifecycle remain.
+
+The CAD/workspace implementation and independent document, solver, feature,
+kernel and camera tests are preserved for reuse, not hidden interactive UI.
+The workspace model above remains the product direction, not a description
+of currently available controls. Truffle's independently developed menus
+are not integrated in this reset.
+
 ## Boundaries
 
 - Studio owns windowing (SDL3), the event loop, fonts, documents and all
@@ -56,8 +70,11 @@ Truffle's Vulkan GUI programs remain owned by Truffle; Studio owns its
 Windows host, GLSL scene sources and font policy. The sampled 3D viewport
 has native readback evidence; existing sketch/constraint/extrude/history,
 layout and orbit/pan/zoom smoke is shared with macOS. Native resize and
-minimize/restore also pass. Windows graphics evidence is the local RTX
-4080 SUPER run, not software-driver/ARM64/physical-reset coverage. macOS
+minimize/restore also pass. That CAD/GUI evidence describes the former
+presentation; current app smoke checks the blank clear-only client and
+native lifecycle instead. Windows
+graphics evidence is the local RTX 4080 SUPER run, not
+software-driver/ARM64/physical-reset coverage. macOS
 Metal paths are preserved but were not rerun from this Windows machine.
 Studio-owned build options and configuration use the `TFLST_` prefix;
 Truffle-owned options retain `TFL_`. No compatibility aliases are added
