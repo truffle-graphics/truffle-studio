@@ -46,7 +46,8 @@ if(BUILD_TESTING)
     add_test(NAME truffle_studio_smoke COMMAND truffle_studio --smoke)
     set_tests_properties(truffle_studio_smoke PROPERTIES
         LABELS "native-smoke;gui;host-window"
-        TIMEOUT 120)
+        TIMEOUT 120
+        FAIL_REGULAR_EXPRESSION "Studio graphics diagnostic:;VUID-")
     if(APPLE)
         set_tests_properties(truffle_studio_smoke PROPERTIES
             ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1;METAL_DEVICE_WRAPPER_TYPE=1")

@@ -134,7 +134,7 @@ void SketchEditor::set_visible(bool visible) {
     if (!services_) { return; }
     const bool shown = visible && active() && !selection_.empty();
     gui::LayoutParams params;
-    if (!shown) { params.height = 0; }
+    if (!shown) { params.height = 0.0F; }
     need(services_->ui.context.set_layout_params(constraints_, params));
     need(services_->ui.context.set_interaction(constraints_, {.enabled = shown}));
     refresh_tools();

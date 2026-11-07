@@ -11,11 +11,16 @@
 #include "truffle/gui/painter.hpp"
 #include "truffle/renderer/frame_stream.hpp"
 #include "truffle/renderer/renderer.hpp"
+#if defined(_WIN32)
+#include "truffle/rhi/vulkan_backend.hpp"
+#else
 #include "truffle/rhi/metal_backend.hpp"
+#endif
 
 #include <SDL3/SDL.h>
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -31,6 +36,11 @@ namespace rhi = truffle::rhi;
 using Clock = gui::Context::Clock;
 
 namespace {
+#if defined(_WIN32)
+constexpr SDL_Keymod shortcut_modifier = SDL_KMOD_CTRL;
+#else
+constexpr SDL_Keymod shortcut_modifier = SDL_KMOD_GUI;
+#endif
 
 void expect(bool value, const char* message) {
     if (!value) { throw std::runtime_error(std::string("smoke check failed: ") + message); }
@@ -50,16 +60,16 @@ public:
     SdlSession& operator=(const SdlSession&) = delete;
 };
 
-// Presents one window's GUI through Truffle's Renderer on Metal.
+// Presents one host-owned window's GUI through Truffle's Renderer.
 class Presenter {
 public:
-    Presenter(rhi::Device& device, void* layer, rhi::Extent2D extent)
+    Presenter(rhi::Device& device, rhi::NativeSurface native, rhi::Extent2D extent)
         : programs_(device), renderer_(device, &programs_),
           pacer_(need(renderer::FramePacer::create(device, 2))),
           painter_(need(gui::Painter::create(
               device, programs_, {.color_format = rhi::TextureFormat::bgra8_unorm}))) {
         surface_ = need(device.create_surface({
-            .native = {.kind = rhi::NativeSurfaceKind::cocoa_layer, .handle = layer},
+            .native = native,
             .initialExtent = extent}));
         swapchain_ = need(device.create_swapchain(
             surface_, {.extent = extent, .format = rhi::TextureFormat::bgra8_unorm}));
@@ -213,14 +223,26 @@ gui::Point center(gui::Context& context, gui::ElementId element) {
 } // namespace
 
 int run(const AppOptions& options) {
+    std::atomic_size_t diagnostics{0};
     SdlSession session(options.smoke);
     SdlWindow window("Truffle Studio", 1280, 800);
+#if defined(_WIN32)
+    auto instance = need(rhi::create_vulkan_instance({
+        .enableValidation = options.smoke,
+        .debugCallback = [](const rhi::BackendDiagnostic& detail, void* user) {
+            static_cast<std::atomic_size_t*>(user)->fetch_add(1);
+            std::cerr << "Studio graphics diagnostic: " << detail.message << '\n';
+        },
+        .debugUserData = &diagnostics}));
+#else
     auto instance = need(rhi::create_metal_instance());
+#endif
     auto adapter = need(instance.adapter(0));
+    if (options.smoke) { std::cout << "Studio native adapter: " << adapter.info().name << '\n'; }
     auto device = need(adapter.request_device({.requiredFeatures = {rhi::Feature::presentation}}));
     const auto initial = window.metrics();
     if (!initial) { throw std::runtime_error("the Studio window has no drawable area"); }
-    Presenter presenter(device, window.metal_layer(), initial->pixels);
+    Presenter presenter(device, window.surface_handle(), initial->pixels);
     auto text = need(gui::TextEngine::create(device));
     const auto font = load_system_font(text, 13);
     const auto atlas = need(presenter.painter().add_texture(need(text.atlas_texture()).get()));
@@ -245,9 +267,14 @@ int run(const AppOptions& options) {
             running = false;
             return;
         }
-        if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) { context.request_frame(); }
+        if ((event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED ||
+             event.type == SDL_EVENT_WINDOW_EXPOSED ||
+             event.type == SDL_EVENT_WINDOW_RESTORED ||
+             event.type == SDL_EVENT_WINDOW_SHOWN) && event.window.windowID == window.id()) {
+            context.request_frame();
+        }
         if (event.type == SDL_EVENT_KEY_DOWN && event.key.windowID == window.id() &&
-            event.key.key == SDLK_Z && (event.key.mod & SDL_KMOD_GUI) != 0 &&
+            event.key.key == SDLK_Z && (event.key.mod & shortcut_modifier) != 0 &&
             !shell.text_editing()) {
             if ((event.key.mod & SDL_KMOD_SHIFT) != 0) {
                 shell.redo();
@@ -262,10 +289,11 @@ int run(const AppOptions& options) {
     // by `cap` when given), then draw only if the GUI needs a frame.
     const auto iterate = [&](std::optional<std::chrono::milliseconds> cap) {
         const auto now = Clock::now();
+        const bool drawable = window.metrics().has_value();
         std::int32_t timeout = -1;
-        if (context.needs_frame(now)) {
+        if (drawable && context.needs_frame(now)) {
             timeout = 0;
-        } else if (const auto due = context.next_update()) {
+        } else if (const auto due = drawable ? context.next_update() : std::nullopt) {
             const auto wait = std::chrono::ceil<std::chrono::milliseconds>(*due - now).count();
             timeout = static_cast<std::int32_t>(std::max<std::int64_t>(wait, 0));
         }
@@ -305,6 +333,19 @@ int run(const AppOptions& options) {
         const auto idle = presenter.frames();
         settle();
         expect(presenter.frames() == idle, "an idle GUI kept drawing");
+#if defined(_WIN32)
+        expect(SDL_MinimizeWindow(window.native()), "could not minimize the smoke window");
+        settle();
+        expect(!window.metrics(), "a minimized window remained drawable");
+        const auto minimized = presenter.frames();
+        context.request_frame();
+        settle();
+        expect(presenter.frames() == minimized, "a minimized window kept drawing");
+        expect(SDL_RestoreWindow(window.native()), "could not restore the smoke window");
+        settle();
+        expect(window.metrics().has_value() && presenter.frames() > minimized,
+               "restoring the window did not resume presentation");
+#endif
 
         namespace dock = gui::dock;
         auto* cad_space = dynamic_cast<cad::CadWorkspace*>(shell.active());
@@ -396,11 +437,11 @@ int run(const AppOptions& options) {
         expect(presenter.frames() > idle, "the edit was not drawn");
 
         // In a focused text field the shortcuts edit the field's own text.
-        push_shortcut(window, SDLK_Z, SDL_KMOD_GUI);
+        push_shortcut(window, SDLK_Z, shortcut_modifier);
         settle();
         expect(need(cad_space->part_name.text()) != edited, "Cmd+Z did not undo typing in the text field");
         expect(document.state().name == need(cad_space->part_name.text()), "the field undo did not reach the document");
-        push_shortcut(window, SDLK_Z, static_cast<SDL_Keymod>(SDL_KMOD_GUI | SDL_KMOD_SHIFT));
+        push_shortcut(window, SDLK_Z, static_cast<SDL_Keymod>(shortcut_modifier | SDL_KMOD_SHIFT));
         settle();
         expect(need(cad_space->part_name.text()) == edited && document.state().name == edited,
                "Shift+Cmd+Z did not redo typing in the text field");
@@ -408,7 +449,7 @@ int run(const AppOptions& options) {
         settle();
         expect(document.state().name == "Untitled", "Undo did not revert the rename");
         expect(need(cad_space->part_name.text()) == "Untitled", "the editor did not follow undo");
-        push_shortcut(window, SDLK_Z, static_cast<SDL_Keymod>(SDL_KMOD_GUI | SDL_KMOD_SHIFT));
+        push_shortcut(window, SDLK_Z, static_cast<SDL_Keymod>(shortcut_modifier | SDL_KMOD_SHIFT));
         settle();
         expect(document.state().name == edited, "Shift+Cmd+Z did not redo the rename");
         expect(need(shell.status.text()) == "Redo Rename part", "redo was not reported");
@@ -469,10 +510,10 @@ int run(const AppOptions& options) {
         push_shortcut(window, SDLK_BACKSPACE, SDL_KMOD_NONE);
         settle();
         expect(sketch()->circles.empty() && editor.selection().empty(), "Backspace did not delete the circle");
-        push_shortcut(window, SDLK_Z, SDL_KMOD_GUI);
+        push_shortcut(window, SDLK_Z, shortcut_modifier);
         settle();
         expect(sketch()->circles.size() == 1, "Cmd+Z did not restore the deleted circle");
-        for (int i = 0; i < 2; ++i) { push_shortcut(window, SDLK_Z, SDL_KMOD_GUI); }
+        for (int i = 0; i < 2; ++i) { push_shortcut(window, SDLK_Z, shortcut_modifier); }
         settle();
         expect(document.state().sketches.empty() && editor.sketch() == 0 && cad_space->sketch_buttons.empty(),
                "undoing the first drawing did not remove its sketch");
@@ -580,7 +621,7 @@ int run(const AppOptions& options) {
         expect(sketch()->at(corner) == model::Vec2{0, 0}, "the fixed corner moved");
         expect(std::abs(length(right) - 20) < 1e-6, "the height changed with the width");
         expect(!cad_space->text_editing(context), "Enter did not hand focus back to the canvas");
-        push_shortcut(window, SDLK_Z, SDL_KMOD_GUI);
+        push_shortcut(window, SDLK_Z, shortcut_modifier);
         settle();
         expect(std::abs(length(bottom) - 30) < 1e-6 && need(field.text()) == "30",
                "undo did not restore the width and its field");
@@ -603,6 +644,20 @@ int run(const AppOptions& options) {
         push_click(window, center(context, cad_space->fit_view.element()));
         settle();
         expect(scene.passes() > before_fit, "the 3D view rendered no pass");
+        {
+            const auto pixels = scene.read_pixels_for_smoke();
+            expect(!pixels.empty(), "the 3D view has no native pixels");
+            std::size_t solid = 0;
+            for (std::size_t i = 0; i < pixels.size(); i += 4) {
+                expect(pixels[i + 3] == std::byte{255}, "the 3D viewport has nonopaque pixels");
+                if (pixels[i] != std::byte{36} || pixels[i + 1] != std::byte{31} ||
+                    pixels[i + 2] != std::byte{28}) {
+                    ++solid;
+                }
+            }
+            expect(solid > pixels.size() / 400, "the native 3D viewport contains no solid");
+            expect(solid < pixels.size() / 4, "the native 3D viewport contains no background");
+        }
         const auto yaw = view.camera.yaw;
         const auto distance = view.camera.distance;
         const auto middle = center(context, view.element());
@@ -637,7 +692,7 @@ int run(const AppOptions& options) {
         };
         type_into(editor.dimension_field(width), "45");
         expect(std::abs(volume() - 9000) < 1e-6, "the extrude did not follow the width");
-        push_shortcut(window, SDLK_Z, SDL_KMOD_GUI);
+        push_shortcut(window, SDLK_Z, shortcut_modifier);
         settle();
         expect(std::abs(volume() - 6000) < 1e-6, "undoing the width did not restore the solid");
         push_click(window, center(context, cad_space->extrude_buttons[0].element()));
@@ -648,12 +703,13 @@ int run(const AppOptions& options) {
         type_into(cad_space->extrude_distance, "25");
         expect(std::abs(volume() - 15000) < 1e-6, "editing the distance did not regenerate");
         expect(!cad_space->text_editing(context), "Enter did not hand focus back to the 3D view");
-        push_shortcut(window, SDLK_Z, SDL_KMOD_GUI);
+        push_shortcut(window, SDLK_Z, shortcut_modifier);
         settle();
         expect(std::abs(volume() - 6000) < 1e-6 && need(cad_space->extrude_distance.text()) == "10",
                "undoing the distance did not restore the solid and its field");
         std::cout << "studio smoke: frames=" << presenter.frames() << " scene passes=" << scene.passes()
                   << " name=" << edited << '\n';
+        expect(diagnostics.load() == 0, "native rendering emitted diagnostics");
     }
     context.set_host(nullptr);
     return 0;

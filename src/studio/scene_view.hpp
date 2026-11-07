@@ -48,6 +48,8 @@ public:
     // The barrier the pass sampling the target needs after add_pass.
     truffle::rhi::TextureBarrier to_shader_read() { return target_->to_shader_read(); }
     std::size_t passes() const noexcept { return passes_; }
+    // Native smoke readback; waits for the viewport and preserves its layout.
+    std::vector<std::byte> read_pixels_for_smoke();
 
 private:
     struct Slot {

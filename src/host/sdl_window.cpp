@@ -103,11 +103,16 @@ SDL_SystemCursor system_cursor(gui::Cursor cursor) {
 } // namespace
 
 SdlWindow::SdlWindow(const char* title, int width, int height) {
+    SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#if defined(__APPLE__)
+    flags |= SDL_WINDOW_METAL;
+#endif
     window_ = SDL_CreateWindow(title, width, height,
-        SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+        flags);
     if (window_ == nullptr) {
         throw std::runtime_error(std::string("SDL window creation failed: ") + SDL_GetError());
     }
+#if defined(__APPLE__)
     view_ = SDL_Metal_CreateView(window_);
     layer_ = view_ != nullptr ? SDL_Metal_GetLayer(view_) : nullptr;
     if (layer_ == nullptr) {
@@ -116,6 +121,14 @@ SdlWindow::SdlWindow(const char* title, int width, int height) {
         SDL_DestroyWindow(window_);
         throw std::runtime_error("SDL Metal view creation failed: " + error);
     }
+#else
+    layer_ = SDL_GetPointerProperty(SDL_GetWindowProperties(window_),
+                                    SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+    if (layer_ == nullptr) {
+        SDL_DestroyWindow(window_);
+        throw std::runtime_error("SDL window has no native Win32 handle");
+    }
+#endif
     id_ = SDL_GetWindowID(window_);
 }
 
@@ -124,8 +137,20 @@ SdlWindow::~SdlWindow() {
     for (SDL_Cursor* cursor : cursors_) {
         if (cursor != nullptr) { SDL_DestroyCursor(cursor); }
     }
+#if defined(__APPLE__)
     SDL_Metal_DestroyView(view_);
+#endif
     SDL_DestroyWindow(window_);
+}
+
+truffle::rhi::NativeSurface SdlWindow::surface_handle() const noexcept {
+    return {
+#if defined(__APPLE__)
+        .kind = truffle::rhi::NativeSurfaceKind::cocoa_layer,
+#else
+        .kind = truffle::rhi::NativeSurfaceKind::win32,
+#endif
+        .handle = layer_};
 }
 
 std::optional<WindowMetrics> SdlWindow::metrics() const {
@@ -186,7 +211,8 @@ void SdlWindow::translate(const SDL_Event& event, const Forward& forward) {
         if (event.key.windowID != id_) { return; }
         const auto mods = modifiers_of(event.key.mod);
         // While an input method composes, it owns plain key presses.
-        if (event.key.down && composing_ && !gui::has(mods, gui::Modifiers::super)) { return; }
+        if (event.key.down && composing_ && !gui::has(mods, gui::Modifiers::super) &&
+            !gui::has(mods, gui::Modifiers::control)) { return; }
         forward(gui::KeyEvent{.key = key_of(event.key.scancode), .down = event.key.down,
                               .repeat = event.key.repeat, .modifiers = mods,
                               .native = static_cast<std::uint32_t>(event.key.scancode)});
@@ -232,13 +258,18 @@ void SdlWindow::set_cursor(gui::Cursor cursor) {
 
 std::string SdlWindow::clipboard_text() {
     char* text = SDL_GetClipboardText();
-    std::string result = text != nullptr ? text : "";
+    if (text == nullptr) {
+        throw std::runtime_error(std::string("SDL clipboard read failed: ") + SDL_GetError());
+    }
+    std::string result = text;
     SDL_free(text);
     return result;
 }
 
 void SdlWindow::set_clipboard_text(std::string_view text) {
-    SDL_SetClipboardText(std::string(text).c_str());
+    if (!SDL_SetClipboardText(std::string(text).c_str())) {
+        throw std::runtime_error(std::string("SDL clipboard write failed: ") + SDL_GetError());
+    }
 }
 
 void SdlWindow::set_text_input_area(std::optional<gui::Rect> area) {
@@ -246,13 +277,18 @@ void SdlWindow::set_text_input_area(std::optional<gui::Rect> area) {
     const SDL_Rect rect{static_cast<int>(std::floor(area->x)), static_cast<int>(std::floor(area->y)),
                         std::max(1, static_cast<int>(std::ceil(area->width))),
                         std::max(1, static_cast<int>(std::ceil(area->height)))};
-    SDL_SetTextInputArea(window_, &rect, 0);
+    if (!SDL_SetTextInputArea(window_, &rect, 0)) {
+        throw std::runtime_error(std::string("SDL IME area update failed: ") + SDL_GetError());
+    }
 }
 
 void SdlWindow::set_text_input_state(std::optional<gui::TextInputState> state) {
     // SDL tracks marked text itself; Studio only switches text input on and off.
     if (state && !text_input_) {
         text_input_ = SDL_StartTextInput(window_);
+        if (!text_input_) {
+            throw std::runtime_error(std::string("SDL text input start failed: ") + SDL_GetError());
+        }
     } else if (!state && text_input_) {
         SDL_StopTextInput(window_);
         text_input_ = false;

@@ -46,18 +46,24 @@ and patch changes are versioned and Studio adapts to Truffle releases.
 
 ## Platform
 
-macOS on Apple Silicon with the Metal backend. Other platforms follow when
-Truffle's backends and Studio's host code are verified there.
+macOS on Apple Silicon with Metal, and Windows x64 with Vulkan. Other
+platforms follow when Truffle's backends and Studio's host code are verified.
 
 Windows x64 bring-up (#22) uses Vulkan, selected by the owner. Native
-PowerShell setup/build and OCCT/kernel verification are implemented; full
-GUI presentation depends on Truffle's Vulkan GUI programs. Studio owns its
-Windows host and font policy; no application workaround belongs in Truffle.
+PowerShell setup/build, OCCT/kernel, system font fallback, SDL Win32 host
+input/clipboard/IME and full CAD/GUI smoke are verified with strict MSVC.
+Truffle's Vulkan GUI programs remain owned by Truffle; Studio owns its
+Windows host, GLSL scene sources and font policy. The sampled 3D viewport
+has native readback evidence; existing sketch/constraint/extrude/history,
+layout and orbit/pan/zoom smoke is shared with macOS. Native resize and
+minimize/restore also pass. Windows graphics evidence is the local RTX
+4080 SUPER run, not software-driver/ARM64/physical-reset coverage. macOS
+Metal paths are preserved but were not rerun from this Windows machine.
 Studio-owned build options and configuration use the `TFLST_` prefix;
 Truffle-owned options retain `TFL_`. No compatibility aliases are added
 before the first release.
 
-Native setup/build entry points use debug/release/relwithdebinfo CMake presets (#18).
+Native setup/build entry points use debug/release/relwithdebinfo CMake presets (#18/#22).
 Final executables/libraries go to `out/<preset>/bin` and `lib`; OCCT
 headers/staging go to `install/<preset>/dependencies`, while its private build
 stays in `build/<preset>/occt-build`. Temporary logs/probes use `build/_scratch`.

@@ -22,7 +22,7 @@ struct WindowMetrics {
     truffle::rhi::Extent2D pixels;
 };
 
-// One SDL3 window with a CAMetalLayer, translating SDL input into Truffle GUI
+// One SDL3 window with a native presentation surface, translating SDL input into Truffle GUI
 // input and serving the GUI's platform requests (cursor, clipboard, IME).
 class SdlWindow final : public truffle::gui::Host {
 public:
@@ -35,7 +35,7 @@ public:
 
     [[nodiscard]] SDL_Window* native() const noexcept { return window_; }
     [[nodiscard]] std::uint32_t id() const noexcept { return id_; }
-    [[nodiscard]] void* metal_layer() const noexcept { return layer_; }
+    [[nodiscard]] truffle::rhi::NativeSurface surface_handle() const noexcept;
     [[nodiscard]] bool text_input_active() const noexcept { return text_input_; }
 
     // Empty while minimized or without a drawable area.

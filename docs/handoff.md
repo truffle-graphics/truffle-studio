@@ -1,5 +1,36 @@
 # Handoff
 
+## Windows native host and CAD/GUI parity (#22)
+
+Windows uses SDL's borrowed HWND with the public Vulkan surface contract;
+macOS retains its SDL Metal view and Cocoa-layer path. Studio compiles its
+own GLSL/SPIR-V scene stages on Windows and MSL on macOS. Windows clip Y is
+adapted in the scene vertex shader while the shared camera keeps [0,1] depth.
+System UI fonts are selected through Win32 GDI and handed to Truffle as font
+bytes, with ordered script fallbacks. Latin/Hebrew/Arabic/Japanese shaping
+tests have no missing glyphs on this machine. Clipboard/cursor/IME requests
+remain SDL-owned; Control shortcuts replace Command on Windows.
+
+All 46 existing non-GUI tests and the full native CAD/GUI smoke pass locally:
+workspace/history, dock save/restore, labels at several window sizes, IME
+composition/commit, sketch entities and selection, constraints/dimensions,
+extrusion and regeneration, sampled 3D view and orbit/pan/zoom. Native target
+readback verifies opaque output, exact clear background and visible solid
+coverage, rather than relying on a submitted pass count. The Windows host
+fixture also exercises clipboard, composition byte offsets and owner-window
+event routing. Minimize suspends rendering without a pending-frame busy loop;
+restore/expose events request redraw.
+
+Strict MSVC Debug build and all four CTest entries pass (unit, native host,
+full CAD smoke and nine isolated PowerShell safety tests). Windows evidence
+is RTX 4080 SUPER with Vulkan validation requested, no native diagnostics.
+The reusable Vulkan GUI prerequisite is signed and pushed as `07331517`
+on Truffle's `feature/gui-vulkan-painter` (#268). Studio pins that revision:
+embedded prepared SPIR-V adds no runtime compiler dependency to GUI, while
+Studio's scene still uses its selected GLSL compiler. Its seven focused
+native checks and compiler-disabled GUI tests passed independently.
+No PR/merge, hosted work, version bump or macOS rerun is implied.
+
 ## Windows bring-up (#22): build and dependency foundation
 
 The owner approved Windows parity with existing macOS Studio functionality,
@@ -22,7 +53,7 @@ the native GUI smoke exposed Truffle's Metal-only GUI programs. A separate
 Truffle session owns Vulkan GUI program support; Studio host/shader/font and
 end-to-end CAD parity validation follow. macOS was not rerun on Windows.
 
-## Current state
+## Prior CAD/UI and tooling delivery
 
 Usability-first CAD cleanup (#21) is approved for commit and push on
 `feature/cad-ui-cleanup`; merging remains pending. The Truffle submodule now
@@ -59,7 +90,8 @@ in `out/<preset>/lib` and dependency headers/staging under
 `install/<preset>/dependencies`. Logs/probes belong in `build/_scratch`.
 Setup confirms missing-tool installation and prepares only the pinned Studio
 and required GUI-text submodules. Dirty submodule checkouts are not moved.
-Studio remains Apple Silicon/macOS-only; PowerShell entry points fail explicitly.
+At that revision Studio was Apple Silicon/macOS-only and PowerShell entry
+points failed explicitly; the Windows phases above supersede that limitation.
 Warnings-as-errors is independently toggled with `--warnings-as-errors on|off`,
 which sets the policy for first-party Studio and Truffle targets in the same
 build tree. New builds default to off; each configuration remembers its setting.

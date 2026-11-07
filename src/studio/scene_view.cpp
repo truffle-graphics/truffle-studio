@@ -32,6 +32,7 @@ struct Vertex {
 };
 static_assert(sizeof(Vertex) == 24);
 
+#if !defined(_WIN32)
 constexpr const char* shader_source = R"(#include <metal_stdlib>
 using namespace metal;
 
@@ -65,10 +66,47 @@ fragment float4 scene_fragment(SceneOutput input [[stage_in]],
     return float4(uniforms.albedo.rgb * shade, 1.0);
 }
 )";
+#endif
 
 shader::CompileRequest compile_request(rhi::ShaderStage stage) {
     shader::CompileRequest result;
     result.name = "Studio scene shader";
+#if defined(_WIN32)
+    constexpr const char* vertex_source = R"(#version 450
+layout(location=0) in vec3 position;
+layout(location=1) in vec3 normal;
+layout(location=0) out vec3 worldNormal;
+layout(set=0,binding=0,std140) uniform SceneUniforms {
+    mat4 viewProjection;
+    vec4 light;
+    vec4 albedo;
+} uniforms;
+void main() {
+    gl_Position = uniforms.viewProjection * vec4(position, 1.0);
+    gl_Position.y = -gl_Position.y;
+    worldNormal = normal;
+}
+)";
+    constexpr const char* fragment_source = R"(#version 450
+layout(location=0) in vec3 worldNormal;
+layout(location=0) out vec4 color;
+layout(set=0,binding=0,std140) uniform SceneUniforms {
+    mat4 viewProjection;
+    vec4 light;
+    vec4 albedo;
+} uniforms;
+void main() {
+    float diffuse = abs(dot(normalize(worldNormal), uniforms.light.xyz));
+    float shade = uniforms.light.w + (1.0 - uniforms.light.w) * diffuse;
+    color = vec4(uniforms.albedo.rgb * shade, 1.0);
+}
+)";
+    result.source = {"scene.glsl", stage == rhi::ShaderStage::vertex ? vertex_source : fragment_source};
+    result.language = rhi::ShaderSourceLanguage::glsl;
+    result.target = rhi::ShaderTarget::spirv;
+    result.stage = stage;
+    result.entryPoint = "main";
+#else
     result.source = {"scene.metal", shader_source};
     result.language = rhi::ShaderSourceLanguage::msl;
     result.target = rhi::ShaderTarget::metal_source;
@@ -91,6 +129,7 @@ shader::CompileRequest compile_request(rhi::ShaderStage stage) {
     reflection.bindings = {{.name = "uniforms", .stage = stage, .group = 0, .binding = 0,
                             .minimumSize = sizeof(Uniforms)}};
     result.interfaceDeclaration = std::move(reflection);
+#endif
     return result;
 }
 } // namespace
@@ -134,6 +173,49 @@ SceneView::SceneView(rhi::Device& device, renderer::PipelineCache& programs, gui
 SceneView::~SceneView() {
     static_cast<void>(pacer_->wait_idle());
     if (texture_.valid()) { static_cast<void>(painter_->remove_texture(texture_)); }
+}
+
+std::vector<std::byte> SceneView::read_pixels_for_smoke() {
+    if (!target_) { throw std::runtime_error("SceneView: no viewport to read"); }
+    need(pacer_->wait_idle());
+    auto& texture = target_->texture();
+    const auto extent = texture.desc().extent;
+    const std::size_t row = static_cast<std::size_t>(extent.width) * 4;
+    std::vector<std::byte> pixels(row * extent.height);
+    auto buffer = need(device_->create_buffer({
+        .size = pixels.size(), .usage = rhi::BufferUsage::copy_destination,
+        .memory = rhi::MemoryDomain::readback}));
+    auto queue = need(device_->queue(rhi::QueueKind::graphics));
+    auto pool = need(device_->create_command_pool(rhi::QueueKind::graphics));
+    auto list = need(pool.allocate());
+    auto fence = need(device_->create_fence());
+    need(list.begin());
+    need(list.barrier({.textures = {{
+        .texture = &texture,
+        .oldLayout = rhi::TextureLayout::shader_read_only,
+        .newLayout = rhi::TextureLayout::transfer_source,
+        .sourceStages = rhi::PipelineStage::fragment_shader,
+        .destinationStages = rhi::PipelineStage::copy,
+        .sourceAccess = rhi::Access::shader_read,
+        .destinationAccess = rhi::Access::transfer_read}}}));
+    auto copy = need(list.begin_copy());
+    need(copy.copy_texture_to_buffer(texture, buffer,
+        {.layout = {.bytesPerRow = row}, .texture = {.extent = extent}}));
+    need(copy.end());
+    need(list.barrier({.textures = {{
+        .texture = &texture,
+        .oldLayout = rhi::TextureLayout::transfer_source,
+        .newLayout = rhi::TextureLayout::shader_read_only,
+        .sourceStages = rhi::PipelineStage::copy,
+        .destinationStages = rhi::PipelineStage::fragment_shader,
+        .sourceAccess = rhi::Access::transfer_read,
+        .destinationAccess = rhi::Access::shader_read}}}));
+    need(list.end());
+    std::array<rhi::CommandList*, 1> lists{&list};
+    need(queue.submit(lists, &fence, 1));
+    need(fence.wait(1, std::chrono::seconds(10)));
+    need(buffer.read(0, pixels));
+    return pixels;
 }
 
 void SceneView::set_mesh(const kernel::Mesh& mesh) {

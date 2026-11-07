@@ -21,7 +21,7 @@ set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 set(CMAKE_OBJCXX_EXTENSIONS OFF)
 
 option(TFLST_WARNINGS_AS_ERRORS "Treat Studio and Truffle warnings as errors" OFF)
-option(TFLST_BUILD_APP "Build the native Studio application" "${APPLE}")
+option(TFLST_BUILD_APP "Build the native Studio application" ON)
 
 include(CTest)
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")

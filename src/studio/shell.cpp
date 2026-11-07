@@ -62,7 +62,7 @@ void Shell::add(std::unique_ptr<Workspace> workspace) {
         return entry.workspace->available();
     }) > 1;
     gui::LayoutParams params;
-    if (!multiple) { params.width = 0; params.height = 0; }
+    if (!multiple) { params.width = 0.0F; params.height = 0.0F; }
     need(context.set_layout_params(switcher_bar_, params));
     need(context.set_clips_children(switcher_bar_, true));
     need(context.set_interaction(switcher_bar_, {.enabled = multiple}));

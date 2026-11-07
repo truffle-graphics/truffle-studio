@@ -11,9 +11,9 @@ Studio is Truffle's dogfooding application: features Studio needs drive Truffle
 work, which is tracked as Truffle issues. Truffle stays a library; Studio is
 the application.
 
-Status: early foundation. macOS (Apple Silicon) with Metal; Windows x64
-Vulkan bring-up is tracked by #22. The Windows build/dependency foundation
-is verified; native GUI/CAD parity verification is in progress.
+Status: early foundation. macOS (Apple Silicon) with Metal and Windows x64
+with Vulkan. Windows CAD/GUI native smoke is verified under #22; this is not
+an ARM64, software-driver or physical-GPU-reset claim.
 
 ## Layout
 
@@ -73,10 +73,12 @@ independently of the current directory; direct CMake commands remain supported.
 On Windows, use `.\setup.ps1 -Check` to verify prerequisites or `.\setup.ps1`
 to prepare pinned dependencies, then
 `.\build.ps1 debug -WarningsAsErrors on --parallel 4`.
+Run `.\out\debug\bin\truffle-studio.exe`, or verify with `ctest --preset debug`.
 Visual Studio C++ Build Tools and the Windows SDK are required; setup activates
 their x64 developer environment before looking for Ninja. Missing Git/CMake/Ninja
-installation through winget requires confirmation. The Windows application
-phase follows the build foundation; core-only checks can use
+installation through winget requires confirmation. Native graphics verification
+uses the Vulkan loader/driver and Khronos validation layer; install the Vulkan SDK
+for validation-enabled smoke runs. Core-only checks can use
 `-DTFLST_BUILD_APP=OFF`. No install script is provided yet.
 
 ```text
@@ -94,7 +96,9 @@ The first build also compiles the OpenCASCADE modelling toolkits (Release,
 shared libraries). Their intermediate build stays in `build/<preset>/occt-build`;
 the usable libraries go to `out/<preset>/lib` and headers/staging to
 `install/<preset>/dependencies/occt`. This takes a few minutes on
-Apple Silicon. Later builds reuse it.
+Apple Silicon. Later builds reuse it. On Windows, OCCT Release DLLs go beside
+the executable in `out/<preset>/bin`; import libraries remain in
+`out/<preset>/lib`. No machine-global DLL search-path changes are required.
 
 ## Updating Truffle
 
