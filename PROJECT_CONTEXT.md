@@ -25,8 +25,8 @@ See [ADR 0001](docs/adr/0001-workspace-application.md).
 ## Current presentation
 
 The owner requested a blank client background while Studio's UI is
-redesigned (#23). Startup constructs only the SDL host, a GUI-owned
-`gui::Application` and the document: no shell, workspace, panels, widgets,
+redesigned (#23). Startup constructs only the SDL host, a separate `gui::Context`, optional
+`gui::Graphics` and the document: no shell, workspace, panels, widgets,
 sketch canvas, fonts or 3D scene. The GUI root is empty and transparent; the
 application owns its graphics device and paints only the dark client clear.
 Application editing input is deliberately inactive; SDL retains native
@@ -47,10 +47,10 @@ controls to that Engine. Do not build an interim Renderer-based viewport.
 
 ## Boundaries
 
-- Studio owns windowing (SDL3), the event loop, fonts, documents and all
-  application state. Truffle's GUI-owned application API provides normal
-  application presentation and owns the graphics consumers. Renderer and RHI
-  are not used directly by the normal Studio app.
+- Studio owns windowing (SDL3), the event loop, fonts, documents, Context and
+  all application state. Truffle's optional GUI Graphics API provides normal
+  presentation and owns the graphics consumers. Renderer and RHI are not used
+  directly by the normal Studio app.
 - Studio uses Truffle only through public GUI headers and CMake targets for
   normal application work. Specialist access belongs only in narrowly scoped
   diagnostics or test code when the public consumer API lacks a capability.
@@ -89,8 +89,10 @@ native lifecycle instead. Windows
 graphics evidence is the local RTX 4080 SUPER run, not
 software-driver/ARM64/physical-reset coverage. macOS
 Metal paths are preserved but were not rerun from this Windows machine.
-The GUI-owned migration (#26) has not yet been verified on either native
-backend. Smoke can request validation, but Truffle's Vulkan backend does not
+The Context/Graphics migration (#27) builds with warnings-as-errors and passes
+the macOS native smoke and unit tests on this machine; Windows native
+validation remains pending. Smoke can request validation, but Truffle's
+Vulkan backend does not
 create a debug messenger or use the custom diagnostics callback; the GUI API
 cannot provide that callback. The presented swapchain image is not exposed
 for readback; smoke-only explicit interop reads back a separate offscreen

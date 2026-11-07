@@ -1,6 +1,21 @@
 # Handoff
 
-## GUI-owned Studio application (#26)
+## Separating Studio Context and Graphics (#27)
+
+Studio now constructs a host-owned `gui::Context` and a separate Truffle
+`gui::Graphics`. SDL remains responsible for the native window, input, event
+loop and application lifecycle. Context receives host services, translated
+input and logical viewport updates; Graphics owns native presentation and the
+GPU consumers. The smoke-only Renderer/RHI readback borrows the device through
+`gui::Rendering::device(graphics)`.
+
+The migration is complete against Truffle #279, pinned at
+`b77d3b96fbb91e959e0969eaf119072e2712e430` from `feat/gui-menus`. A strict
+macOS Apple Silicon Debug build passes with warnings-as-errors enabled.
+`truffle_studio_smoke` and `studio_unit` both pass (2/2); the smoke runs with
+Metal validation enabled. Windows native validation remains pending.
+
+## GUI-owned Studio application (#26, historical)
 
 Studio now builds only the SDL host and a GUI-owned `gui::Application`,
 linking `Truffle::GUI` rather than Renderer, Presentation, dock, backend,

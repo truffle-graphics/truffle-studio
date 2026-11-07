@@ -5,7 +5,7 @@
 #include "studio/check.hpp"
 #include "studio/smoke_readback.hpp"
 
-#include "truffle/gui/application.hpp"
+#include "truffle/gui/graphics.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -47,40 +47,42 @@ public:
     SdlSession& operator=(const SdlSession&) = delete;
 };
 
-std::size_t draw_if_needed(gui::Application& application, const SdlWindow& window) {
+std::size_t draw_if_needed(gui::Graphics& graphics, gui::Context& context,
+                           const SdlWindow& window) {
     if (!window.metrics()) { return 0; }
     const auto now = gui::Context::Clock::now();
-    if (!application.needs_frame(now)) { return 0; }
-    const auto status = application.draw(now);
-    const bool presented = application.last_frame_stats().presented;
+    if (!graphics.needs_frame(context, now)) { return 0; }
+    const auto status = graphics.draw(context, now);
+    const bool presented = graphics.last_frame_stats().presented;
     if (status.code == truffle::base::StatusCode::surface_lost) {
         const auto metrics = window.metrics();
         if (!metrics) {
             return presented ? 1 : 0;
         }
-        need(application.replace_window(window.window_handle(), metrics->pixels, metrics->scale));
-        application.context().request_frame();
+        need(graphics.replace_window(context, window.window_handle(), metrics->pixels,
+                                     metrics->scale));
+        context.request_frame();
     } else if (status.code == truffle::base::StatusCode::device_lost) {
         throw std::runtime_error(
             "Truffle GUI device was lost; restart Studio to recreate its GPU consumers");
     } else if (status.code == truffle::base::StatusCode::out_of_date ||
                status.code == truffle::base::StatusCode::suboptimal) {
-        application.context().request_frame();
+        context.request_frame();
     } else {
         need(status);
     }
     return presented ? 1 : 0;
 }
 
-void check_blank_for_smoke(gui::Application& application, gui::PixelSize pixels) {
-    need(application.wait_idle());
-    const auto stats = application.last_frame_stats();
+void check_blank_for_smoke(gui::Graphics& graphics, gui::PixelSize pixels) {
+    need(graphics.wait_idle());
+    const auto stats = graphics.last_frame_stats();
     expect(stats.presented && stats.batches == 0,
            "the client was not a blank GUI-only presentation");
-    verify_clear_pixels(application, pixels, background);
+    verify_clear_pixels(graphics, pixels, background);
 }
 
-std::int32_t wait_timeout(gui::Application& application,
+std::int32_t wait_timeout(const gui::Graphics& graphics, const gui::Context& context,
                           const SdlWindow& window,
                           std::optional<std::chrono::milliseconds> cap) {
     using namespace std::chrono;
@@ -89,11 +91,11 @@ std::int32_t wait_timeout(gui::Application& application,
     }
     const auto now = gui::Context::Clock::now();
     auto timeout = cap.value_or(milliseconds::max());
-    if (const auto next = application.next_update()) {
+    if (const auto next = context.next_update()) {
         const auto until = std::chrono::ceil<milliseconds>(*next - now);
         timeout = std::min(timeout, std::max(milliseconds::zero(), until));
     }
-    if (application.needs_frame(now)) { return 0; }
+    if (graphics.needs_frame(context, now)) { return 0; }
     if (timeout == milliseconds::max()) { return -1; }
     return static_cast<std::int32_t>(std::clamp<std::int64_t>(
         timeout.count(), 0, std::numeric_limits<std::int32_t>::max()));
@@ -118,21 +120,26 @@ int run(const AppOptions& options) {
     const auto initial = window.metrics();
     if (!initial) { throw std::runtime_error("the Studio window has no drawable area"); }
 
-    auto application = need(gui::Application::create({
+    auto graphics = need(gui::Graphics::create({
         .window = window.window_handle(),
         .pixels = initial->pixels,
         .dpi_scale = initial->scale,
-        .host = &window,
         .enable_validation = options.smoke,
         .clear = background,
     }));
+    gui::Context context;
+    context.set_host(&window);
+    need(context.set_viewport(
+        {static_cast<float>(initial->pixels.width) / initial->scale,
+         static_cast<float>(initial->pixels.height) / initial->scale},
+        initial->scale));
     model::Document document;
 
     bool running = true;
     std::size_t frames = 0;
     std::optional<WindowMetrics> configured = initial;
     const auto forward_input = [&](const gui::InputEvent& input) {
-        need(application.handle(input));
+        need(context.handle(input));
     };
     const auto dispatch = [&](const SDL_Event& event) {
         if (event.type == SDL_EVENT_QUIT ||
@@ -145,13 +152,13 @@ int run(const AppOptions& options) {
              event.type == SDL_EVENT_WINDOW_EXPOSED ||
              event.type == SDL_EVENT_WINDOW_RESTORED ||
              event.type == SDL_EVENT_WINDOW_SHOWN) && event.window.windowID == window.id()) {
-            application.context().request_frame();
+            context.request_frame();
         }
         window.translate(event, forward_input);
     };
     const auto iterate = [&](std::optional<std::chrono::milliseconds> cap) {
         SDL_Event event{};
-        if (SDL_WaitEventTimeout(&event, wait_timeout(application, window, cap))) {
+        if (SDL_WaitEventTimeout(&event, wait_timeout(graphics, context, window, cap))) {
             dispatch(event);
             while (SDL_PollEvent(&event)) { dispatch(event); }
         }
@@ -162,14 +169,14 @@ int run(const AppOptions& options) {
             const bool changed = !configured ||
                 configured->pixels != metrics->pixels || configured->scale != metrics->scale;
             if (changed) {
-                need(application.resize(metrics->pixels, metrics->scale));
+                need(graphics.resize(context, metrics->pixels, metrics->scale));
                 configured = metrics;
             }
         } else if (configured) {
-            need(application.resize({}, configured->scale));
+            need(graphics.resize(context, {}, configured->scale));
             configured.reset();
         }
-        if (metrics) { frames += draw_if_needed(application, window); }
+        if (metrics) { frames += draw_if_needed(graphics, context, window); }
     };
 
     if (!options.smoke) {
@@ -179,11 +186,11 @@ int run(const AppOptions& options) {
             for (int i = 0; i < 20; ++i) { iterate(std::chrono::milliseconds(5)); }
         };
         const auto check_blank = [&] {
-            application.context().request_frame();
+            context.request_frame();
             settle();
             const auto metrics = window.metrics();
             expect(metrics.has_value(), "the smoke window has no drawable area");
-            check_blank_for_smoke(application, metrics->pixels);
+            check_blank_for_smoke(graphics, metrics->pixels);
             expect(!window.text_input_active(), "the blank window started a text editor");
         };
         settle();
@@ -198,7 +205,7 @@ int run(const AppOptions& options) {
         settle();
         expect(!window.metrics(), "a minimized window remained drawable");
         const auto minimized = frames;
-        application.context().request_frame();
+        context.request_frame();
         settle();
         expect(frames == minimized, "a minimized blank window kept drawing");
         expect(SDL_RestoreWindow(window.native()), "could not restore the smoke window");
@@ -217,7 +224,7 @@ int run(const AppOptions& options) {
             expect(frames > before, "resizing did not redraw the blank window");
             const auto resized = window.metrics();
             expect(resized.has_value(), "resized window has no drawable area");
-            check_blank_for_smoke(application, resized->pixels);
+            check_blank_for_smoke(graphics, resized->pixels);
         }
 
         expect(document.edit("Smoke document", [](model::DocumentState& state) {
@@ -293,7 +300,7 @@ int run(const AppOptions& options) {
         std::cout << "studio blank smoke: frames=" << frames
                   << " no GUI batches; input inert; lifecycle passed\n";
     }
-    need(application.wait_idle());
+    need(graphics.wait_idle());
     return 0;
 }
 

@@ -22,10 +22,10 @@ void expect(bool value, const char* message) {
     if (!value) { throw std::runtime_error(std::string("smoke check failed: ") + message); }
 }
 
-void verify_clear_pixels(gui::Application& application,
+void verify_clear_pixels(gui::Graphics& graphics,
                          gui::PixelSize pixels,
                          gui::Color clear) {
-    auto& device = renderer::RhiInterop::native(gui::Rendering::device(application));
+    auto& device = renderer::RhiInterop::native(gui::Rendering::device(graphics));
     const std::size_t row = static_cast<std::size_t>(pixels.width) * 4;
     std::vector<std::byte> bytes(row * pixels.height);
     auto texture = need(device.create_texture({
