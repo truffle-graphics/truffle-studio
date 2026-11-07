@@ -7,7 +7,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 try {
-    if ($Preset -in @('--help', '-h')) {
+    if ($Preset -in @('--help', '-h') -or
+        $BuildArguments -contains '--help' -or $BuildArguments -contains '-h') {
         Write-Output 'Usage: .\build.ps1 [debug|release|relwithdebinfo] [-WarningsAsErrors on|off] [CMake build arguments]'
         exit 0
     }

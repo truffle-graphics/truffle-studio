@@ -31,6 +31,22 @@ Studio's scene still uses its selected GLSL compiler. Its seven focused
 native checks and compiler-disabled GUI tests passed independently.
 No PR/merge, hosted work, version bump or macOS rerun is implied.
 
+## Windows regression coverage and wrapper closeout (#22)
+
+Native host/font tests and nine isolated PowerShell fixture cases are now
+part of CTest. Fixtures run from outside their temporary repository root,
+exercise help without tools, preserve build arguments and cached warning
+policy, propagate configure/build failures, and enforce read-only check mode,
+dirty-checkout preservation and named-only pinned dependency preparation.
+Python is optional for tooling fixtures; native/unit smoke remains available
+without it. The build wrapper accepts help through either PowerShell binding.
+
+The integration phase is signed and pushed as `2a34ad8`, following build
+foundation `5ce1219`. The final pinned setup check and strict Debug build
+pass; all four CTest entries pass against Truffle `07331517`. Windows app
+builds by default in new configurations; existing explicit app-off caches
+remain respected. Issue #22 is ready for integration review, not merged.
+
 ## Windows bring-up (#22): build and dependency foundation
 
 The owner approved Windows parity with existing macOS Studio functionality,
