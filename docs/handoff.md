@@ -35,6 +35,17 @@ Validation is intentionally limited: `app.cpp`, `sdl_window.cpp` and
 suite, native smoke or Metal/Vulkan pixel test is claimed. The old exact pixel
 readback could not be preserved through the exposed GUI-owned API.
 
+## Owner-approved GUI and CAD roadmap (#25)
+
+The approved sequence in [Studio #25](https://github.com/truffle-graphics/truffle-studio/issues/25)
+is to build the GUI-only application shell first (menus, panels, controls and
+docking), keeping the CAD viewport an empty placeholder. Next, develop the
+Truffle Engine (#272) together with the CAD viewport and connect the GUI
+controls to the Engine. There is no interim Renderer-based viewport. The
+independently paced shared-context window API remains an open Truffle design
+dependency (#276) for future multi-window docking needs; Studio does not
+design around or implement it in advance.
+
 ## Earlier Truffle presentation integration (#24)
 
 Studio now uses Truffle's optional `Truffle::RendererPresentation` API for

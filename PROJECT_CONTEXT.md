@@ -38,6 +38,13 @@ The workspace model above remains the product direction, not a description
 of currently available controls. Truffle's independently developed menus
 are not integrated in this reset.
 
+## Approved UI and CAD roadmap (#25)
+
+Build the GUI-only application shell first: menus, panels, controls and
+docking, with the CAD viewport remaining an empty placeholder. Then develop
+the Truffle Engine (#272) together with the CAD viewport and connect the GUI
+controls to that Engine. Do not build an interim Renderer-based viewport.
+
 ## Boundaries
 
 - Studio owns windowing (SDL3), the event loop, fonts, documents and all
