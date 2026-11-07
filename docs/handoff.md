@@ -1,5 +1,21 @@
 # Handoff
 
+## Truffle GUI defaults (#30)
+
+Studio uses the layered GUI style contract from Truffle #280, pinned at
+`26a18be0691c4c98a82b82df888dfed59e0747c5`. The shared widget helper and
+preserved CAD controls no longer replace available component sizing, padding
+or borders. CAD dimension fields use their measured default size for
+placement. Studio selects the platform font and uses Truffle's default size.
+The default-first policy applies to every GUI component until the owner
+explicitly changes it and updates `PROJECT_CONTEXT.md`; issue #29 remains
+deferred. Application-owned layout and CAD drawing remain separate.
+
+The macOS Apple Silicon Debug executable built with warnings-as-errors and
+was launched for owner-run manual verification. The preserved CAD GUI
+sources also passed a strict syntax compile. No behavioral or visual
+verification was performed by the agent; Windows validation remains pending.
+
 ## Studio menu bar (#28)
 
 Studio composes Truffle's in-client `MenuBar`: File > Quit and Edit > Undo /
@@ -11,9 +27,9 @@ make the displayed letter shortcuts follow the active keyboard layout while
 the GUI's named keys remain physical.
 
 The root layout stretches the bar across the client, but Studio does not
-override Truffle's menu bar, trigger, popup or item sizes or padding. The
-platform system font is still explicitly loaded at 14 logical units: Truffle
-requires a caller-supplied font size and does not provide a default yet.
+override Truffle's menu bar, trigger, popup or item sizes or padding. At that
+revision the platform system font was explicitly loaded at 14 logical units
+because Truffle had not yet provided a default font size.
 
 The incremental strict macOS Apple Silicon Debug build passed with
 warnings-as-errors. All three Studio CTests passed: native Metal menu smoke,

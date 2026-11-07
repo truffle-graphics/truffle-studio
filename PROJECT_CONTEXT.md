@@ -34,15 +34,23 @@ SDL retains native window/event ownership and lifecycle.
 
 Studio lets Truffle determine the menu bar, trigger, popup and item dimensions
 and padding; the root layout stretches the bar across the client. Studio
-still selects a 14-logical-unit system UI font because Truffle's text API
-requires a caller-supplied font size and currently has no font-size default.
-Menu actions and platform shortcuts use the same commands; history commands
-reflect availability and do not steal a focused text editor's shortcuts.
+selects the system UI font and uses Truffle's default font size. Menu actions
+and platform shortcuts use the same commands; history commands reflect
+availability and do not steal a focused text editor's shortcuts.
 
 The CAD/workspace implementation and independent document, solver, feature,
 kernel and camera tests are preserved for reuse, not hidden interactive UI.
 The workspace model above remains the product direction, not a description
 of currently available controls.
+
+## GUI defaults during development
+
+Use Truffle's defaults for all Studio GUI components, including their sizing,
+styling and behavior, so the owner can evaluate those defaults. Do not
+override available defaults in Studio unless the owner explicitly directs a
+change and this project context is updated to record it. Until both happen,
+the default-first decision remains in force. Compose application layouts as
+needed and supply explicit values where Truffle provides no default.
 
 ## Approved UI and CAD roadmap (#25)
 

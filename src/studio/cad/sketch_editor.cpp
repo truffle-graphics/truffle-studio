@@ -25,8 +25,6 @@ constexpr gui::Color accent{0.35F, 0.6F, 1, 1};
 constexpr gui::Color preview{0.35F, 0.6F, 1, 0.7F};
 constexpr gui::Color constrained_color{0.55F, 0.85F, 0.6F, 1};
 constexpr gui::Color conflict_color{0.95F, 0.45F, 0.4F, 1};
-constexpr float field_width = 64;
-constexpr float field_height = 26;
 
 std::string format_value(double value) {
     char buffer[32];
@@ -290,7 +288,8 @@ bool SketchEditor::apply(Action action) {
 }
 
 std::optional<gui::Point> SketchEditor::dimension_anchor(const model::Sketch& sketch,
-                                                         const model::SketchConstraint& c) const {
+                                                         const model::SketchConstraint& c,
+                                                         gui::Size field_size) const {
     const auto bounds = need(services_->ui.context.bounds(canvas_));
     const auto local = [&](Vec2 v) {
         return gui::Point{bounds.width / 2 + static_cast<float>((v.x - center_.x) * scale_),
@@ -306,7 +305,8 @@ std::optional<gui::Point> SketchEditor::dimension_anchor(const model::Sketch& sk
             // Outside a counter-clockwise loop, clear of the line.
             const float nx = -dy / len;
             const float ny = dx / len;
-            const float gap = 6 + std::abs(nx) * field_width / 2 + std::abs(ny) * field_height / 2;
+            const float gap = 6 + std::abs(nx) * field_size.width / 2 +
+                              std::abs(ny) * field_size.height / 2;
             return gui::Point{(a.x + b.x) / 2 + nx * gap, (a.y + b.y) / 2 + ny * gap};
         }
         const auto a = local(sketch.at(c.a));
@@ -333,16 +333,34 @@ void SketchEditor::before_frame() {
     if (!services_ || !constraints_.valid()) { return; }
     auto& context = services_->ui.context;
     const std::uint16_t columns = need(context.bounds(constraints_)).width >= 220 ? 2 : 1;
-    if (columns == constraint_columns_) { return; }
-    constraint_columns_ = columns;
-    need(context.set_layout(constraint_grid_, std::make_shared<gui::GridLayout>(gui::GridOptions{
-        .columns = std::vector<gui::Track>(columns, gui::Track::weighted()),
-        .column_spacing = 4, .row_spacing = 4})));
-    for (std::size_t i = 0; i < action_buttons_.size(); ++i) {
-        auto params = need(context.layout_params(action_buttons_[i].element()));
-        params.cell.column = static_cast<std::uint16_t>(i % columns);
-        params.cell.row = static_cast<std::uint16_t>(i / columns);
-        need(context.set_layout_params(action_buttons_[i].element(), params));
+    if (columns != constraint_columns_) {
+        constraint_columns_ = columns;
+        need(context.set_layout(constraint_grid_, std::make_shared<gui::GridLayout>(gui::GridOptions{
+            .columns = std::vector<gui::Track>(columns, gui::Track::weighted()),
+            .column_spacing = 4, .row_spacing = 4})));
+        for (std::size_t i = 0; i < action_buttons_.size(); ++i) {
+            auto params = need(context.layout_params(action_buttons_[i].element()));
+            params.cell.column = static_cast<std::uint16_t>(i % columns);
+            params.cell.row = static_cast<std::uint16_t>(i / columns);
+            need(context.set_layout_params(action_buttons_[i].element(), params));
+        }
+    }
+
+    const auto* sketch = active();
+    if (!sketch) { return; }
+    for (auto& [id, field] : fields_) {
+        const auto* constraint = sketch->constraint(id);
+        if (!constraint || !model::is_dimension(constraint->kind)) { continue; }
+        const auto size = need(context.bounds(field.widget.element())).size();
+        const auto anchor = dimension_anchor(*sketch, *constraint, size).value_or(gui::Point{});
+        const gui::Point position{std::round(anchor.x - size.width / 2),
+                                  std::round(anchor.y - size.height / 2)};
+        if (position != field.position) {
+            auto params = need(context.layout_params(field.widget.element()));
+            params.position = position;
+            need(context.set_layout_params(field.widget.element(), params));
+            field.position = position;
+        }
     }
 }
 
@@ -374,15 +392,6 @@ void SketchEditor::update() {
             it = fields_.emplace(id, Field{widget, {-1e9F, -1e9F}}).first;
         }
         auto& field = it->second;
-        const auto anchor = dimension_anchor(*sketch, c).value_or(gui::Point{});
-        const gui::Point position{std::round(anchor.x - field_width / 2), std::round(anchor.y - field_height / 2)};
-        if (position.x != field.position.x || position.y != field.position.y) {
-            gui::LayoutParams params;
-            params.width = field_width;
-            params.position = position;
-            need(context.set_layout_params(field.widget.element(), params));
-            field.position = position;
-        }
         const auto text = format_value(c.value);
         if (context.focused() != field.widget.element() && need(field.widget.text()) != text) {
             need(field.widget.set_text(text));

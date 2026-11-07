@@ -40,8 +40,9 @@ public:
     // Follows document changes (undo can remove the active sketch).
     void sync();
     // Once per loop turn, outside input dispatch: creates, removes and
-    // places the dimension fields.
+    // updates the dimension fields.
     void update();
+    // Positions dimension fields after their default sizes have been measured.
     void before_frame();
 
     void set_tool(Tool tool);
@@ -85,7 +86,8 @@ private:
     void drag_to(model::Vec2 at);
     void submit_dimension(model::ObjectId constraint);
     std::optional<truffle::gui::Point> dimension_anchor(const model::Sketch& sketch,
-                                                        const model::SketchConstraint& c) const;
+                                                        const model::SketchConstraint& c,
+                                                        truffle::gui::Size field_size) const;
     void commit(std::string label, const std::function<void(model::DocumentState&, model::Sketch&)>& draw);
     void cancel();
     void redraw();

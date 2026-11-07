@@ -66,8 +66,6 @@ void CadWorkspace::build(WorkspaceServices& services, dock::DockSpace& space) {
     gui::LayoutParams feature_params;
     feature_params.weight = 1;
     need(ui.context.set_layout_params(features.element(), feature_params));
-    need(ui.context.set_property_override(features.element(), gui::Property::padding, gui::Edges{}));
-    need(ui.context.set_property_override(features.element(), gui::Property::border_width, 0.0F));
     feature_list_ = features.content();
     need(ui.context.set_layout(feature_list_, std::make_shared<gui::StackLayout>(gui::StackOptions{.spacing = 2})));
     extrude_button = ui.button(model, "Extrude sketch", [this] { extrude_active_sketch(); });
@@ -88,7 +86,6 @@ void CadWorkspace::build(WorkspaceServices& services, dock::DockSpace& space) {
     gui::LayoutParams inspector_params;
     inspector_params.weight = 1;
     need(ui.context.set_layout_params(inspector_scroll.element(), inspector_params));
-    need(ui.context.set_property_override(inspector_scroll.element(), gui::Property::border_width, 0.0F));
     const auto inspector = inspector_scroll.content();
     need(ui.context.set_layout(inspector, std::make_shared<gui::StackLayout>(gui::StackOptions{.spacing = 8})));
     inspector_ = inspector;

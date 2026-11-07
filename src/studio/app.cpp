@@ -206,7 +206,7 @@ int run(const AppOptions& options) {
 
     bool running = true;
     auto& text = need(graphics.text()).get();
-    const auto font = load_system_font(text, 14.0F);
+    const auto font = load_system_font(text);
     MainMenu menu(context, {&text, font, graphics.text_atlas()}, document,
                   [&] { running = false; });
     std::size_t frames = 0;
