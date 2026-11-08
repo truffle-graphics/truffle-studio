@@ -1,8 +1,27 @@
 # Handoff
 
+## Fluent GUI API and batch integration (#31)
+
+Studio's menu bar, shell and preserved CAD/workspace sources use Truffle's
+fluent `gui::Ui` handles and callbacks; the former local widget helper is
+removed. Menu commands, platform shortcuts and the default-first GUI policy
+remain unchanged.
+
+Truffle merged first through PR #283. `external/truffle` now pins its
+`develop` merge commit `bd6354378ebef0d7ea322e678adc69786fe5ff9f`, including
+the fluent API and macOS test-source fixes. Relative to the previously built
+`9fa3150`, only Truffle test sources and handoff documentation changed; no
+production source changed. The prior strict macOS Debug build succeeded,
+and all three existing Studio CTests passed again after updating the pin.
+Windows native validation of the latest GUI migrations remains pending.
+
+The owner approved a normal merge-commit PR from `feature/windows-studio`
+into `develop`, followed by removal of merged feature/docs branches.
+Preserve `develop`, `master` and any unmerged work.
+
 ## Truffle GUI defaults (#30)
 
-Studio uses the layered GUI style contract from Truffle #280, pinned at
+Historical delivery: Studio used the layered GUI style contract from Truffle #280, pinned at
 `26a18be0691c4c98a82b82df888dfed59e0747c5`. The shared widget helper and
 preserved CAD controls no longer replace available component sizing, padding
 or borders. CAD dimension fields use their measured default size for
