@@ -33,8 +33,8 @@ public:
     static const char* action_name(Action action) noexcept;
 
     // Drawing tools stay above the canvas; constraints live in the Inspector.
-    void build(WorkspaceServices& services, truffle::gui::ElementId parent,
-               truffle::gui::ElementId inspector);
+    void build(WorkspaceServices& services, truffle::gui::Container parent,
+               truffle::gui::Container inspector);
     void set_visible(bool visible);
     void teardown();
     // Follows document changes (undo can remove the active sketch).
@@ -51,8 +51,8 @@ public:
     void set_sketch(model::ObjectId sketch);
     const std::vector<model::ObjectId>& selection() const noexcept { return selection_; }
     truffle::gui::ElementId canvas() const noexcept { return canvas_; }
-    truffle::gui::Widget tool_button(Tool tool) const;
-    truffle::gui::Widget action_button(Action action) const;
+    truffle::gui::Button tool_button(Tool tool) const;
+    truffle::gui::Button action_button(Action action) const;
     // Applies `action` to the selection; false (and a status message) if
     // the selection does not suit it or it would over-constrain.
     bool apply(Action action);
@@ -60,7 +60,7 @@ public:
     // How constrained the active sketch is.
     const model::SolveResult& status() const noexcept { return status_; }
     // The field showing a dimension constraint's value.
-    truffle::gui::Widget dimension_field(model::ObjectId constraint) const;
+    truffle::gui::TextField dimension_field(model::ObjectId constraint) const;
     bool editing_dimension(const truffle::gui::Context& context) const;
 
     // Window position of a sketch point, and the reverse.
@@ -103,14 +103,14 @@ private:
 
     WorkspaceServices* services_ = nullptr;
     truffle::gui::ElementId canvas_;
-    truffle::gui::ElementId constraints_;
-    truffle::gui::ElementId constraint_grid_;
+    truffle::gui::Container constraints_;
+    truffle::gui::Container constraint_grid_;
     std::uint16_t constraint_columns_ = 2;
     bool visible_ = true;
-    std::vector<std::pair<truffle::gui::ElementId, truffle::gui::Widget>> tool_buttons_;
-    std::vector<truffle::gui::Widget> action_buttons_;
+    std::vector<std::pair<truffle::gui::Container, truffle::gui::Button>> tool_buttons_;
+    std::vector<truffle::gui::Button> action_buttons_;
     struct Field {
-        truffle::gui::Widget widget;
+        truffle::gui::TextField widget;
         truffle::gui::Point position;
     };
     std::map<model::ObjectId, Field> fields_; // by dimension constraint id

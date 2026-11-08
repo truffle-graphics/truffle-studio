@@ -1,9 +1,10 @@
 #pragma once
 
 #include "model/document.hpp"
-#include "studio/ui.hpp"
+#include "studio/check.hpp"
 
 #include "truffle/gui/dock/dock.hpp"
+#include "truffle/gui/ui.hpp"
 
 #include <array>
 #include <functional>
@@ -25,11 +26,23 @@ struct EngineProfile {
 
 // What the shell gives a workspace while it is active.
 struct WorkspaceServices {
-    Ui ui;
+    truffle::gui::Ui ui;
     model::Document& document;
     std::function<void(std::string)> report;
     SceneView* scene = nullptr; // offscreen 3D rendering; null without a GPU
 };
+
+// Marks the active choice in a group of toggles with the theme accent.
+inline void highlight(truffle::gui::Context& context, truffle::gui::ElementId element,
+                      bool selected) {
+    need(context.bind_property(element, truffle::gui::Property::fill, "gui.accent"));
+    if (selected) {
+        need(context.clear_property_override(element, truffle::gui::Property::fill));
+    } else {
+        need(context.set_property_override(element, truffle::gui::Property::fill,
+                                           truffle::gui::Color{}));
+    }
+}
 
 // A mode of the application over the shared document. The shell builds the
 // active workspace's panels into a fresh dock and tears them down on switch;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "truffle/gui/menus.hpp"
+#include "truffle/gui/ui.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -9,16 +9,16 @@
 namespace studio {
 namespace model { class Document; }
 
-// Context, document and the quit callback's captures outlive this menu bar.
+// Adds the bar under `ui.root()`. The Context, document and the quit
+// callback's captures outlive this menu bar.
 class MainMenu {
 public:
-    MainMenu(truffle::gui::Context& context, truffle::gui::MenuTextStyle text,
-             model::Document& document, std::function<void()> quit);
+    MainMenu(const truffle::gui::Ui& ui, model::Document& document, std::function<void()> quit);
     ~MainMenu();
     MainMenu(const MainMenu&) = delete;
     MainMenu& operator=(const MainMenu&) = delete;
 
-    [[nodiscard]] truffle::base::Status sync();
+    void sync();
     [[nodiscard]] truffle::gui::ElementId element() const noexcept { return bar_.element(); }
     [[nodiscard]] const truffle::gui::Menu& file() const noexcept;
     [[nodiscard]] const truffle::gui::Menu& edit() const noexcept;
@@ -28,7 +28,6 @@ public:
 
 private:
     struct State;
-    truffle::gui::Context& context_;
     model::Document& document_;
     truffle::gui::MenuBar bar_;
     std::shared_ptr<State> state_;

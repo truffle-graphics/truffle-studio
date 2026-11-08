@@ -9,6 +9,7 @@
 
 #include "truffle/gui/graphics.hpp"
 #include "truffle/gui/text_edit.hpp"
+#include "truffle/gui/ui.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -207,14 +208,15 @@ int run(const AppOptions& options) {
     bool running = true;
     auto& text = need(graphics.text()).get();
     const auto font = load_system_font(text);
-    MainMenu menu(context, {&text, font, graphics.text_atlas()}, document,
-                  [&] { running = false; });
+    gui::Ui ui{context, {&text, font, graphics.text_atlas()}};
+    ui.set_error_handler([](const truffle::base::Status& status) { need(status); });
+    MainMenu menu(ui, document, [&] { running = false; });
     std::size_t frames = 0;
     std::optional<WindowMetrics> configured = initial;
     const auto forward_input = [&](const gui::InputEvent& input) {
-        need(menu.sync());
+        menu.sync();
         need(context.handle(input));
-        need(menu.sync());
+        menu.sync();
     };
     const auto dispatch = [&](const SDL_Event& event) {
         if (event.type == SDL_EVENT_QUIT ||
@@ -391,7 +393,7 @@ int run(const AppOptions& options) {
         expect(!window.text_input_active(), "destroying the editor left text input active");
 
         document.begin("Pending edit");
-        need(menu.sync());
+        menu.sync();
         expect(!enabled(menu.undo_item()) && !enabled(menu.redo_item()),
                "an open edit left history commands enabled");
         document.cancel();

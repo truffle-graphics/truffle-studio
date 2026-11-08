@@ -29,26 +29,26 @@ public:
 
     SketchEditor editor;
     ModelView view;
-    truffle::gui::Widget sketch_mode;
-    truffle::gui::Widget model_mode;
-    truffle::gui::Widget fit_view;
-    truffle::gui::Widget part_name;
-    truffle::gui::Widget sketch_info;
-    truffle::gui::Widget new_sketch;
-    std::vector<truffle::gui::Widget> plane_buttons;
-    truffle::gui::Widget extrude_button;
-    // The selected extrude's distance; only alive while one is selected.
-    truffle::gui::Widget extrude_distance;
+    truffle::gui::Button sketch_mode;
+    truffle::gui::Button model_mode;
+    truffle::gui::Button fit_view;
+    truffle::gui::TextField part_name;
+    truffle::gui::Label sketch_info;
+    truffle::gui::Button new_sketch;
+    std::vector<truffle::gui::Button> plane_buttons;
+    truffle::gui::Button extrude_button;
+    // The selected extrude's distance; only valid while one is selected.
+    truffle::gui::TextField extrude_distance;
     // The feature tree: one button per sketch and per extrude, in document order.
-    std::vector<truffle::gui::Widget> sketch_buttons;
-    std::vector<truffle::gui::Widget> extrude_buttons;
+    std::vector<truffle::gui::Button> sketch_buttons;
+    std::vector<truffle::gui::Button> extrude_buttons;
 
     const features::Regeneration& regeneration() const noexcept { return regeneration_; }
     model::ObjectId selected_extrude() const noexcept { return selected_extrude_; }
 
 private:
     struct Entry {
-        truffle::gui::ElementId highlight;
+        truffle::gui::Container highlight;
         model::ObjectId sketch = 0;
         model::ObjectId extrude = 0;
     };
@@ -64,13 +64,13 @@ private:
 
     WorkspaceServices* services_ = nullptr;
     std::uint64_t subscription_ = 0;
-    truffle::gui::ElementId feature_list_;
-    truffle::gui::ElementId inspector_;
-    truffle::gui::ElementId distance_row_;
-    truffle::gui::ElementId sketch_page_;
-    truffle::gui::ElementId model_page_;
-    truffle::gui::ElementId sketch_highlight_;
-    truffle::gui::ElementId model_highlight_;
+    truffle::gui::Container feature_list_;
+    truffle::gui::Container inspector_;
+    truffle::gui::Container distance_row_;
+    truffle::gui::Container sketch_page_;
+    truffle::gui::Container model_page_;
+    truffle::gui::Container sketch_highlight_;
+    truffle::gui::Container model_highlight_;
     std::vector<Entry> entries_;
     std::string listed_;
     model::ObjectId selected_extrude_ = 0;

@@ -77,40 +77,33 @@ const char* SketchEditor::action_name(Action action) noexcept {
     return "?";
 }
 
-void SketchEditor::build(WorkspaceServices& services, gui::ElementId parent, gui::ElementId inspector) {
+void SketchEditor::build(WorkspaceServices& services, gui::Container parent, gui::Container inspector) {
     services_ = &services;
-    auto& context = services.ui.context;
+    auto& context = services.ui.context();
 
-    const auto bar = services.ui.row(parent, 4);
+    auto bar = parent.row();
     for (const auto tool : tools) {
-        const auto highlight = services.ui.row(bar, 0, {2, 2, 2, 2});
-        tool_buttons_.emplace_back(highlight, services.ui.button(highlight, tool_name(tool), [this, tool] {
+        // The selection ring around each tool button has no Truffle default.
+        auto highlight = bar.row().padding(2);
+        tool_buttons_.emplace_back(highlight, highlight.button(tool_name(tool)).on_click([this, tool] {
             set_tool(tool);
         }));
     }
 
-    constraints_ = need(context.create(inspector));
-    need(context.set_layout(constraints_, std::make_shared<gui::StackLayout>(gui::StackOptions{.spacing = 6})));
-    need(context.set_clips_children(constraints_, true));
-    static_cast<void>(services.ui.label(constraints_, "Constraints"));
-    const auto grid = need(context.create(constraints_));
-    constraint_grid_ = grid;
+    constraints_ = inspector.column();
+    need(context.set_clips_children(constraints_.element(), true));
+    static_cast<void>(constraints_.label("Constraints"));
     constraint_columns_ = 2;
-    need(context.set_layout(grid, std::make_shared<gui::GridLayout>(gui::GridOptions{
-        .columns = {gui::Track::weighted(), gui::Track::weighted()},
-        .column_spacing = 4, .row_spacing = 4})));
+    constraint_grid_ = constraints_.grid({.columns = {gui::Track::weighted(), gui::Track::weighted()}});
     for (const auto action : actions) {
-        auto button = services.ui.button(grid, action_name(action), [this, action] {
-            static_cast<void>(apply(action));
-        });
-        auto params = need(context.layout_params(button.element()));
-        params.cell.column = static_cast<std::uint16_t>(action_buttons_.size() % 2);
-        params.cell.row = static_cast<std::uint16_t>(action_buttons_.size() / 2);
-        need(context.set_layout_params(button.element(), params));
-        action_buttons_.push_back(button);
+        const auto index = action_buttons_.size();
+        action_buttons_.push_back(constraint_grid_.button(action_name(action))
+            .cell({.column = static_cast<std::uint16_t>(index % 2),
+                   .row = static_cast<std::uint16_t>(index / 2)})
+            .on_click([this, action] { static_cast<void>(apply(action)); }));
     }
 
-    canvas_ = need(context.create(parent));
+    canvas_ = need(context.create(parent.element()));
     gui::LayoutParams params;
     params.weight = 1;
     need(context.set_layout_params(canvas_, params));
@@ -121,7 +114,7 @@ void SketchEditor::build(WorkspaceServices& services, gui::ElementId parent, gui
     need(context.set_event_handler(canvas_, [this](gui::Context& ctx, gui::RoutedEvent& event) {
         handle(ctx, event);
     }));
-    need(context.set_clips_children(parent, true));
+    need(context.set_clips_children(parent.element(), true));
     need(context.set_clips_children(canvas_, true));
     refresh_tools();
     sync();
@@ -130,11 +123,7 @@ void SketchEditor::build(WorkspaceServices& services, gui::ElementId parent, gui
 void SketchEditor::set_visible(bool visible) {
     visible_ = visible;
     if (!services_) { return; }
-    const bool shown = visible && active() && !selection_.empty();
-    gui::LayoutParams params;
-    if (!shown) { params.height = 0.0F; }
-    need(services_->ui.context.set_layout_params(constraints_, params));
-    need(services_->ui.context.set_interaction(constraints_, {.enabled = shown}));
+    constraints_.visible(visible && active() && !selection_.empty());
     refresh_tools();
 }
 
@@ -170,7 +159,7 @@ void SketchEditor::set_tool(Tool tool) {
     refresh_tools();
     if (services_) {
         services_->report(std::string("Tool: ") + tool_name(tool));
-        if (visible_) { need(services_->ui.context.focus(canvas_)); }
+        if (visible_) { need(services_->ui.context().focus(canvas_)); }
     }
     notify();
 }
@@ -185,24 +174,24 @@ void SketchEditor::set_sketch(model::ObjectId sketch) {
     notify();
 }
 
-gui::Widget SketchEditor::tool_button(Tool tool) const {
+gui::Button SketchEditor::tool_button(Tool tool) const {
     const auto index = static_cast<std::size_t>(std::ranges::find(tools, tool) - tools.begin());
-    return index < tool_buttons_.size() ? tool_buttons_[index].second : gui::Widget{};
+    return index < tool_buttons_.size() ? tool_buttons_[index].second : gui::Button{};
 }
 
-gui::Widget SketchEditor::action_button(Action action) const {
+gui::Button SketchEditor::action_button(Action action) const {
     const auto index = static_cast<std::size_t>(std::ranges::find(actions, action) - actions.begin());
-    return index < action_buttons_.size() ? action_buttons_[index] : gui::Widget{};
+    return index < action_buttons_.size() ? action_buttons_[index] : gui::Button{};
 }
 
-gui::Widget SketchEditor::dimension_field(model::ObjectId constraint) const {
+gui::TextField SketchEditor::dimension_field(model::ObjectId constraint) const {
     const auto it = fields_.find(constraint);
-    return it == fields_.end() ? gui::Widget{} : it->second.widget;
+    return it == fields_.end() ? gui::TextField{} : it->second.widget;
 }
 
 bool SketchEditor::editing_dimension(const gui::Context& context) const {
     return std::ranges::any_of(fields_, [&](const auto& entry) {
-        return entry.second.widget.alive() && context.focused() == entry.second.widget.element();
+        return entry.second.widget.valid() && context.focused() == entry.second.widget.element();
     });
 }
 
@@ -268,7 +257,7 @@ bool SketchEditor::apply(Action action) {
     const auto pending = requests(action);
     auto error = can_apply(action) ? model::ConstrainError::none : model::ConstrainError::unsuitable;
     if (error == model::ConstrainError::none) {
-        need(services_->ui.context.focus(canvas_));
+        need(services_->ui.context().focus(canvas_));
         static_cast<void>(services_->document.edit(name, [&](model::DocumentState& state) {
             const auto saved = state;
             auto* target = state.sketch(sketch_);
@@ -290,7 +279,7 @@ bool SketchEditor::apply(Action action) {
 std::optional<gui::Point> SketchEditor::dimension_anchor(const model::Sketch& sketch,
                                                          const model::SketchConstraint& c,
                                                          gui::Size field_size) const {
-    const auto bounds = need(services_->ui.context.bounds(canvas_));
+    const auto bounds = need(services_->ui.context().bounds(canvas_));
     const auto local = [&](Vec2 v) {
         return gui::Point{bounds.width / 2 + static_cast<float>((v.x - center_.x) * scale_),
                           bounds.height / 2 - static_cast<float>((v.y - center_.y) * scale_)};
@@ -331,18 +320,19 @@ std::optional<gui::Point> SketchEditor::dimension_anchor(const model::Sketch& sk
 
 void SketchEditor::before_frame() {
     if (!services_ || !constraints_.valid()) { return; }
-    auto& context = services_->ui.context;
-    const std::uint16_t columns = need(context.bounds(constraints_)).width >= 220 ? 2 : 1;
+    auto& context = services_->ui.context();
+    const std::uint16_t columns = need(context.bounds(constraints_.element())).width >= 220 ? 2 : 1;
     if (columns != constraint_columns_) {
         constraint_columns_ = columns;
-        need(context.set_layout(constraint_grid_, std::make_shared<gui::GridLayout>(gui::GridOptions{
+        // Keep the themed gap the grid already resolved.
+        const auto gap = constraint_grid_.property(gui::Property::spacing);
+        const float spacing = gap ? std::get<float>(*gap) : 0.0F;
+        need(context.set_layout(constraint_grid_.element(), std::make_shared<gui::GridLayout>(gui::GridOptions{
             .columns = std::vector<gui::Track>(columns, gui::Track::weighted()),
-            .column_spacing = 4, .row_spacing = 4})));
+            .column_spacing = spacing, .row_spacing = spacing})));
         for (std::size_t i = 0; i < action_buttons_.size(); ++i) {
-            auto params = need(context.layout_params(action_buttons_[i].element()));
-            params.cell.column = static_cast<std::uint16_t>(i % columns);
-            params.cell.row = static_cast<std::uint16_t>(i / columns);
-            need(context.set_layout_params(action_buttons_[i].element(), params));
+            action_buttons_[i].cell({.column = static_cast<std::uint16_t>(i % columns),
+                                     .row = static_cast<std::uint16_t>(i / columns)});
         }
     }
 
@@ -356,9 +346,7 @@ void SketchEditor::before_frame() {
         const gui::Point position{std::round(anchor.x - size.width / 2),
                                   std::round(anchor.y - size.height / 2)};
         if (position != field.position) {
-            auto params = need(context.layout_params(field.widget.element()));
-            params.position = position;
-            need(context.set_layout_params(field.widget.element(), params));
+            field.widget.position(position);
             field.position = position;
         }
     }
@@ -366,7 +354,7 @@ void SketchEditor::before_frame() {
 
 void SketchEditor::update() {
     if (!services_ || !canvas_.valid()) { return; }
-    auto& context = services_->ui.context;
+    auto& context = services_->ui.context();
     const auto* sketch = active();
     const auto wanted = [&](model::ObjectId id) {
         const auto* c = sketch ? sketch->constraint(id) : nullptr;
@@ -376,7 +364,7 @@ void SketchEditor::update() {
         if (wanted(it->first)) {
             ++it;
         } else {
-            if (it->second.widget.alive()) { need(context.destroy(it->second.widget.element())); }
+            it->second.widget.remove();
             it = fields_.erase(it);
         }
     }
@@ -386,15 +374,15 @@ void SketchEditor::update() {
         auto it = fields_.find(c.id);
         if (it == fields_.end()) {
             const auto id = c.id;
-            auto widget = services_->ui.widget(canvas_, {.kind = gui::WidgetKind::text_edit,
-                                                          .text = format_value(c.value),
-                                                          .activated = [this, id] { submit_dimension(id); }});
+            // The canvas has no layout, so each field keeps its own position.
+            auto widget = services_->ui.adopt(canvas_).text_field(format_value(c.value))
+                              .on_submit([this, id] { submit_dimension(id); });
             it = fields_.emplace(id, Field{widget, {-1e9F, -1e9F}}).first;
         }
         auto& field = it->second;
         const auto text = format_value(c.value);
-        if (context.focused() != field.widget.element() && need(field.widget.text()) != text) {
-            need(field.widget.set_text(text));
+        if (context.focused() != field.widget.element() && field.widget.text() != text) {
+            field.widget.text(text);
         }
     }
 }
@@ -402,7 +390,7 @@ void SketchEditor::update() {
 void SketchEditor::submit_dimension(model::ObjectId constraint) {
     const auto it = fields_.find(constraint);
     if (!services_ || it == fields_.end()) { return; }
-    const auto text = need(it->second.widget.text());
+    const auto text = it->second.widget.text();
     char* end = nullptr;
     const double value = std::strtod(text.c_str(), &end);
     if (end == text.c_str() || *end != '\0' || !(value > 0)) {
@@ -420,18 +408,18 @@ void SketchEditor::submit_dimension(model::ObjectId constraint) {
         services_->report("No solution with the dimension at " + format_value(value) + " mm");
     }
     // Hand focus back so the field shows the stored value again.
-    static_cast<void>(services_->ui.context.focus(canvas_));
-    services_->ui.context.request_frame();
+    static_cast<void>(services_->ui.context().focus(canvas_));
+    services_->ui.context().request_frame();
 }
 
 gui::Point SketchEditor::to_window(Vec2 point) const {
-    const auto rect = need(services_->ui.context.absolute_bounds(canvas_));
+    const auto rect = need(services_->ui.context().absolute_bounds(canvas_));
     return {rect.x + rect.width / 2 + static_cast<float>((point.x - center_.x) * scale_),
             rect.y + rect.height / 2 - static_cast<float>((point.y - center_.y) * scale_)};
 }
 
 Vec2 SketchEditor::to_sketch(gui::Point window) const {
-    const auto rect = need(services_->ui.context.absolute_bounds(canvas_));
+    const auto rect = need(services_->ui.context().absolute_bounds(canvas_));
     return {center_.x + (window.x - rect.x - rect.width / 2) / scale_,
             center_.y - (window.y - rect.y - rect.height / 2) / scale_};
 }
@@ -736,8 +724,8 @@ void SketchEditor::cancel() {
 
 void SketchEditor::redraw() {
     if (!services_ || !canvas_.valid()) { return; }
-    need(services_->ui.context.invalidate(canvas_, gui::Dirty::shape));
-    services_->ui.context.request_frame();
+    need(services_->ui.context().invalidate(canvas_, gui::Dirty::shape));
+    services_->ui.context().request_frame();
 }
 
 void SketchEditor::notify() {
@@ -748,10 +736,10 @@ void SketchEditor::notify() {
 void SketchEditor::refresh_tools() {
     if (!services_) { return; }
     for (std::size_t i = 0; i < tool_buttons_.size(); ++i) {
-        services_->ui.highlight(tool_buttons_[i].first, tools[i] == tool_);
+        highlight(services_->ui.context(), tool_buttons_[i].first.element(), tools[i] == tool_);
     }
     for (std::size_t i = 0; i < action_buttons_.size(); ++i) {
-        need(action_buttons_[i].set_enabled(can_apply(actions[i])));
+        action_buttons_[i].enabled(can_apply(actions[i]));
     }
 }
 

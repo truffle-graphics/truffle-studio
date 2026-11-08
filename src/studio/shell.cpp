@@ -1,7 +1,5 @@
 #include "studio/shell.hpp"
 
-#include "truffle/gui/themes.hpp"
-
 #include <algorithm>
 #include <memory>
 #include <stdexcept>
@@ -12,35 +10,27 @@ namespace dock = truffle::gui::dock;
 
 Shell::Shell(model::Document& document, gui::TextEngine& text, gui::FontId font,
              gui::TextureId atlas, SceneView* scene)
-    : document_(document), ui_{context, text, font, atlas},
+    : document_(document), ui_{context, {.engine = &text, .font = font, .atlas = atlas}},
       services_{ui_, document, [this](std::string message) { report(std::move(message)); }, scene} {
-    const auto root = context.root();
-    need(gui::install_default_theme(context));
-    need(context.set_layout(root, std::make_shared<gui::StackLayout>()));
-    need(context.bind_property(root, gui::Property::fill, "gui.surface"));
+    ui_.set_error_handler([](const truffle::base::Status& status) { need(status); });
+    auto root = ui_.root();
+    need(context.bind_property(root.element(), gui::Property::fill, "gui.surface"));
 
-    const auto bar = ui_.row(root, 6, {8, 4, 8, 4});
-    need(context.bind_property(bar, gui::Property::fill, "gui.surface"));
-    switcher_bar_ = ui_.row(bar, 4);
-    const auto commands = ui_.row(bar, 4);
-    undo_button = ui_.button(commands, "Undo", [this] { undo(); });
-    redo_button = ui_.button(commands, "Redo", [this] { redo(); });
-    need(undo_button.set_enabled(document_.can_undo()));
-    need(redo_button.set_enabled(document_.can_redo()));
+    auto bar = root.row();
+    need(context.bind_property(bar.element(), gui::Property::fill, "gui.surface"));
+    switcher_bar_ = bar.row();
+    auto commands = bar.row();
+    undo_button = commands.button("Undo").on_click([this] { undo(); });
+    redo_button = commands.button("Redo").on_click([this] { redo(); });
+    undo_button.enabled(document_.can_undo());
+    redo_button.enabled(document_.can_redo());
 
-    content_ = need(context.create(root));
-    need(context.set_layout(content_, std::make_shared<gui::StackLayout>()));
-    gui::LayoutParams params;
-    params.weight = 1;
-    need(context.set_layout_params(content_, params));
+    content_ = root.column().weight(1);
 
-    const auto footer = ui_.row(root, 8, {8, 3, 8, 3});
-    status = ui_.label(footer, "Ready");
-    params = {};
-    params.weight = 1;
-    need(context.set_layout_params(status.element(), params));
+    auto footer = root.row();
+    status = footer.label("Ready").weight(1);
     // Restoring reparents panels, so it waits until input dispatch ends.
-    reset_layout = ui_.button(footer, "Reset layout", [this] {
+    reset_layout = footer.button("Reset layout").on_click([this] {
         reset_requested_ = true;
         context.request_frame();
     });
@@ -50,22 +40,19 @@ Shell::~Shell() { close_active(); }
 
 void Shell::add(std::unique_ptr<Workspace> workspace) {
     Entry added;
-    added.highlight = ui_.row(switcher_bar_, 0, {2, 2, 2, 2});
+    // The selection ring around the switcher button has no Truffle default.
+    added.highlight = switcher_bar_.row().padding(2);
     const std::string id(workspace->id());
     std::string title(workspace->title());
     if (!workspace->available()) { title += " (planned)"; }
-    added.button = ui_.button(added.highlight, std::move(title), [this, id] { request(id); });
-    if (!workspace->available()) { need(added.button.set_enabled(false)); }
+    added.button = added.highlight.button(std::move(title)).on_click([this, id] { request(id); });
+    if (!workspace->available()) { added.button.enabled(false); }
     added.workspace = std::move(workspace);
     entries_.push_back(std::move(added));
     const bool multiple = std::ranges::count_if(entries_, [](const Entry& entry) {
         return entry.workspace->available();
     }) > 1;
-    gui::LayoutParams params;
-    if (!multiple) { params.width = 0.0F; params.height = 0.0F; }
-    need(context.set_layout_params(switcher_bar_, params));
-    need(context.set_clips_children(switcher_bar_, true));
-    need(context.set_interaction(switcher_bar_, {.enabled = multiple}));
+    switcher_bar_.visible(multiple);
 }
 
 Shell::Entry* Shell::entry(std::string_view id) noexcept {
@@ -84,9 +71,9 @@ Workspace* Shell::find(std::string_view id) const noexcept {
     return item ? item->workspace.get() : nullptr;
 }
 
-gui::Widget Shell::switcher(std::string_view id) const {
+gui::Button Shell::switcher(std::string_view id) const {
     const auto* item = entry(id);
-    return item ? item->button : gui::Widget{};
+    return item ? item->button : gui::Button{};
 }
 
 const std::string& Shell::default_layout() const {
@@ -99,7 +86,7 @@ void Shell::close_active() {
     if (!active_) { return; }
     auto* item = entry(active_->id());
     item->layout = dock.save();
-    ui_.highlight(item->highlight, false);
+    highlight(context, item->highlight.element(), false);
     active_->teardown();
     if (dock.alive()) {
         const auto element = dock.element();
@@ -115,15 +102,15 @@ void Shell::activate(std::string_view id) {
     if (!item) { throw std::invalid_argument("unknown workspace: " + std::string(id)); }
     if (!item->workspace->available() || active_ == item->workspace.get()) { return; }
     close_active();
-    dock = need(dock::DockSpace::create(context, content_, {
-        .text_engine = &ui_.text, .font = ui_.font, .atlas = ui_.atlas}));
+    dock = need(dock::DockSpace::create(context, content_.element(), {
+        .text_engine = ui_.text().engine, .font = ui_.text().font, .atlas = ui_.text().atlas}));
     gui::LayoutParams params;
     params.weight = 1;
     need(context.set_layout_params(dock.element(), params));
     item->workspace->build(services_, dock);
     if (item->default_layout.empty()) { item->default_layout = dock.save(); }
     if (!item->layout.empty()) { need(dock.restore(item->layout)); }
-    ui_.highlight(item->highlight, true);
+    highlight(context, item->highlight.element(), true);
     active_ = item->workspace.get();
     report(std::string(active_->title()) + " workspace");
 }
@@ -140,8 +127,8 @@ void Shell::before_frame() {
 }
 
 void Shell::update() {
-    need(undo_button.set_enabled(document_.can_undo()));
-    need(redo_button.set_enabled(document_.can_redo()));
+    undo_button.enabled(document_.can_undo());
+    redo_button.enabled(document_.can_redo());
     if (!requested_.empty()) {
         const auto id = std::move(requested_);
         requested_.clear();
@@ -169,6 +156,6 @@ void Shell::redo() {
 
 bool Shell::text_editing() const { return active_ && active_->text_editing(context); }
 
-void Shell::report(std::string message) { need(status.set_text(std::move(message))); }
+void Shell::report(std::string message) { status.text(std::move(message)); }
 
 } // namespace studio

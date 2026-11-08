@@ -22,7 +22,7 @@ Vec3 to_vec(kernel::Vec3 v) { return {v.x, v.y, v.z}; }
 
 void ModelView::build(WorkspaceServices& services, gui::ElementId parent) {
     services_ = &services;
-    auto& context = services.ui.context;
+    auto& context = services.ui.context();
     view_ = need(context.create(parent));
     gui::LayoutParams params;
     params.weight = 1;
@@ -100,13 +100,13 @@ void ModelView::set_active_sketch(model::ObjectId sketch) {
 
 void ModelView::redraw() {
     if (!services_ || !view_.valid()) { return; }
-    need(services_->ui.context.invalidate(view_, gui::Dirty::shape));
-    services_->ui.context.request_frame();
+    need(services_->ui.context().invalidate(view_, gui::Dirty::shape));
+    services_->ui.context().request_frame();
 }
 
 void ModelView::before_frame() {
     if (!services_ || !services_->scene || !visible_) { return; }
-    auto& context = services_->ui.context;
+    auto& context = services_->ui.context();
     const auto rect = need(context.absolute_bounds(view_));
     const float scale = context.scale();
     const auto width = static_cast<std::uint32_t>(std::lround(rect.width * scale));
