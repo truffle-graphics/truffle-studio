@@ -6,10 +6,12 @@ project(
     DESCRIPTION "Graphics authoring application built on the Truffle framework"
     LANGUAGES C CXX)
 
-if(NOT APPLE)
-    message(FATAL_ERROR "Truffle Studio currently targets macOS (Apple Silicon) with Metal only")
+if(NOT APPLE AND NOT WIN32)
+    message(FATAL_ERROR "Truffle Studio supports macOS (Apple Silicon) and Windows")
 endif()
-enable_language(OBJCXX)
+if(APPLE)
+    enable_language(OBJCXX)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,7 +20,8 @@ set(CMAKE_OBJCXX_STANDARD 20)
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 set(CMAKE_OBJCXX_EXTENSIONS OFF)
 
-option(STUDIO_WARNINGS_AS_ERRORS "Treat Studio and Truffle warnings as errors" OFF)
+option(TFLST_WARNINGS_AS_ERRORS "Treat Studio and Truffle warnings as errors" OFF)
+option(TFLST_BUILD_APP "Build the native Studio application" ON)
 
 include(CTest)
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")

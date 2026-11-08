@@ -2,7 +2,7 @@
 
 #include "truffle/gui/host.hpp"
 #include "truffle/gui/input.hpp"
-#include "truffle/rhi/types.hpp"
+#include "truffle/gui/window.hpp"
 
 #include <array>
 #include <cstdint>
@@ -19,11 +19,11 @@ namespace studio {
 struct WindowMetrics {
     truffle::gui::Size logical;
     float scale = 1.0F;
-    truffle::rhi::Extent2D pixels;
+    truffle::gui::PixelSize pixels;
 };
 
-// One SDL3 window with a CAMetalLayer, translating SDL input into Truffle GUI
-// input and serving the GUI's platform requests (cursor, clipboard, IME).
+// One SDL3 window, translating SDL input into Truffle GUI input and serving
+// the GUI's platform requests (cursor, clipboard, IME).
 class SdlWindow final : public truffle::gui::Host {
 public:
     using Forward = std::function<void(const truffle::gui::InputEvent&)>;
@@ -35,7 +35,7 @@ public:
 
     [[nodiscard]] SDL_Window* native() const noexcept { return window_; }
     [[nodiscard]] std::uint32_t id() const noexcept { return id_; }
-    [[nodiscard]] void* metal_layer() const noexcept { return layer_; }
+    [[nodiscard]] truffle::gui::WindowHandle window_handle() const noexcept;
     [[nodiscard]] bool text_input_active() const noexcept { return text_input_; }
 
     // Empty while minimized or without a drawable area.
@@ -53,7 +53,8 @@ public:
 private:
     SDL_Window* window_ = nullptr;
     void* view_ = nullptr; // SDL_MetalView
-    void* layer_ = nullptr;
+    void* native_handle_ = nullptr;
+    void* display_ = nullptr;
     std::uint32_t id_ = 0;
     bool composing_ = false;
     bool text_input_ = false;

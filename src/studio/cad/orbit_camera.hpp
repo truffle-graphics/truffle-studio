@@ -6,7 +6,7 @@
 #include <optional>
 
 // The 3D viewport's camera: pure math, no GPU or GUI dependency. Z is up,
-// as in most CAD tools. Matrices are column-major with Metal's [0, 1] depth.
+// as in most CAD tools. Matrices are column-major with [0, 1] clip depth.
 namespace studio::cad {
 
 struct Vec3 {

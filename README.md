@@ -11,7 +11,21 @@ Studio is Truffle's dogfooding application: features Studio needs drive Truffle
 work, which is tracked as Truffle issues. Truffle stays a library; Studio is
 the application.
 
-Status: early foundation. macOS (Apple Silicon) with Metal only.
+Status: early foundation, with a minimal in-client menu bar and an otherwise
+blank client while Studio's UI is redesigned (#23, #28). File contains Quit;
+Edit contains Undo and Redo, enabled when document history permits. The menus
+use Truffle's default layout and theme. There are no application panels,
+sketch grid/geometry or CAD editing controls; the native window and title bar
+remain. CAD/document/kernel logic is retained for reuse, not exposed through
+hidden widgets.
+
+macOS (Apple Silicon) uses Metal and Windows x64 uses Vulkan. The former
+Windows CAD/GUI presentation was verified under #22; the current menu
+integration has not yet been validated natively on Windows. This is not an
+ARM64, software-driver or physical-GPU-reset claim.
+
+On macOS, the menu shortcuts are Cmd+Q, Cmd+Z and Cmd+Shift+Z. On Windows,
+they are Ctrl+Q, Ctrl+Z and Ctrl+Y; Ctrl+Shift+Z also redoes an edit.
 
 ## Layout
 
@@ -65,11 +79,19 @@ New builds default to off. Each configuration remembers its setting until
 explicitly changed; toggling does not create a different build directory.
 The flag applies to first-party Studio and Truffle targets, not vendored
 third-party warning policy. Direct CMake use can set
-`-DSTUDIO_WARNINGS_AS_ERRORS=ON` or `OFF` with the same effect.
+`-DTFLST_WARNINGS_AS_ERRORS=ON` or `OFF` with the same effect.
 Other build arguments are passed to `cmake --build`. Scripts locate the repository
 independently of the current directory; direct CMake commands remain supported.
-PowerShell entry points report the unsupported platform rather than pretending
-Studio builds on Windows. No install script is provided yet.
+On Windows, use `.\setup.ps1 -Check` to verify prerequisites or `.\setup.ps1`
+to prepare pinned dependencies, then
+`.\build.ps1 debug -WarningsAsErrors on --parallel 4`.
+Run `.\out\debug\bin\truffle-studio.exe`, or verify with `ctest --preset debug`.
+Visual Studio C++ Build Tools and the Windows SDK are required; setup activates
+their x64 developer environment before looking for Ninja. Missing Git/CMake/Ninja
+installation through winget requires confirmation. Native graphics verification
+uses the Vulkan loader/driver and Khronos validation layer; install the Vulkan SDK
+for validation-enabled smoke runs. Core-only checks can use
+`-DTFLST_BUILD_APP=OFF`. No install script is provided yet.
 
 ```text
 build/<preset>/         CMake internals and intermediate dependency builds
@@ -79,14 +101,16 @@ install/<preset>/dependencies/  dependency headers and build-time staging
 build/_scratch/         temporary validation logs and probes
 ```
 
-All these directories are ignored by Git. `STUDIO_OUTPUT_DIR` and
-`STUDIO_DEPENDENCY_PREFIX` can override the direct-build locations.
+All these directories are ignored by Git. `TFLST_OUTPUT_DIR` and
+`TFLST_DEPENDENCY_PREFIX` can override the direct-build locations.
 
 The first build also compiles the OpenCASCADE modelling toolkits (Release,
 shared libraries). Their intermediate build stays in `build/<preset>/occt-build`;
 the usable libraries go to `out/<preset>/lib` and headers/staging to
 `install/<preset>/dependencies/occt`. This takes a few minutes on
-Apple Silicon. Later builds reuse it.
+Apple Silicon. Later builds reuse it. On Windows, OCCT Release DLLs go beside
+the executable in `out/<preset>/bin`; import libraries remain in
+`out/<preset>/lib`. No machine-global DLL search-path changes are required.
 
 ## Updating Truffle
 
@@ -95,6 +119,23 @@ git -C external/truffle fetch origin develop
 git -C external/truffle checkout origin/develop
 git add external/truffle
 ```
+
+## Preserved CAD foundation
+
+The document/history model, XY/XZ/YZ sketches, constraint solver, feature
+regeneration, OpenCASCADE kernel and camera/geometry helpers remain in the
+source tree with their unit tests. Legacy shell/workspace/editor code is
+also retained, but the app does not construct it or render a scene. Former
+CAD UI workflows are unavailable until a redesigned presentation is wired
+in deliberately.
+
+`truffle-studio --smoke` checks the rendered menu and otherwise empty client,
+menu pointer/keyboard interactions, document history and shortcut routing,
+idle/minimize/restore/resize behavior and native close routing. Studio keeps
+SDL window/event ownership and uses Truffle's `gui::Context` and optional
+`gui::Graphics` for GUI state and presentation. A smoke-only offscreen
+Renderer/RHI readback verifies menu and background pixels. Host/font tests
+and independent CAD/kernel unit tests remain useful.
 
 ## Documentation
 

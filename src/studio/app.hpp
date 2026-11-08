@@ -3,7 +3,7 @@
 namespace studio {
 
 struct AppOptions {
-    // Runs a scripted, self-checking session and exits; for automated tests.
+    // Checks the blank native client and its lifecycle, then exits.
     bool smoke = false;
 };
 

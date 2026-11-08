@@ -37,21 +37,21 @@ public:
 
     Workspace* active() const noexcept { return active_; }
     Workspace* find(std::string_view id) const noexcept;
-    truffle::gui::Widget switcher(std::string_view id) const;
+    truffle::gui::Button switcher(std::string_view id) const;
     const std::string& default_layout() const;
 
     truffle::gui::Context context;
     truffle::gui::dock::DockSpace dock;
-    truffle::gui::Widget undo_button;
-    truffle::gui::Widget redo_button;
-    truffle::gui::Widget reset_layout;
-    truffle::gui::Widget status;
+    truffle::gui::Button undo_button;
+    truffle::gui::Button redo_button;
+    truffle::gui::Button reset_layout;
+    truffle::gui::Label status;
 
 private:
     struct Entry {
         std::unique_ptr<Workspace> workspace;
-        truffle::gui::ElementId highlight;
-        truffle::gui::Widget button;
+        truffle::gui::Container highlight;
+        truffle::gui::Button button;
         std::string layout;         // last layout, kept across switches
         std::string default_layout; // as built
     };
@@ -60,10 +60,10 @@ private:
     void close_active();
 
     model::Document& document_;
-    Ui ui_;
+    truffle::gui::Ui ui_;
     WorkspaceServices services_;
-    truffle::gui::ElementId switcher_bar_;
-    truffle::gui::ElementId content_;
+    truffle::gui::Container switcher_bar_;
+    truffle::gui::Container content_;
     std::vector<Entry> entries_;
     Workspace* active_ = nullptr;
     std::string requested_;

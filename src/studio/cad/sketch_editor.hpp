@@ -32,14 +32,18 @@ public:
                                         Action::fixed,      Action::dimension};
     static const char* action_name(Action action) noexcept;
 
-    // Builds the toolbar and canvas into `parent`, a vertical stack.
-    void build(WorkspaceServices& services, truffle::gui::ElementId parent);
+    // Drawing tools stay above the canvas; constraints live in the Inspector.
+    void build(WorkspaceServices& services, truffle::gui::Container parent,
+               truffle::gui::Container inspector);
+    void set_visible(bool visible);
     void teardown();
     // Follows document changes (undo can remove the active sketch).
     void sync();
     // Once per loop turn, outside input dispatch: creates, removes and
-    // places the dimension fields.
+    // updates the dimension fields.
     void update();
+    // Positions dimension fields after their default sizes have been measured.
+    void before_frame();
 
     void set_tool(Tool tool);
     Tool tool() const noexcept { return tool_; }
@@ -47,15 +51,16 @@ public:
     void set_sketch(model::ObjectId sketch);
     const std::vector<model::ObjectId>& selection() const noexcept { return selection_; }
     truffle::gui::ElementId canvas() const noexcept { return canvas_; }
-    truffle::gui::Widget tool_button(Tool tool) const;
-    truffle::gui::Widget action_button(Action action) const;
+    truffle::gui::Button tool_button(Tool tool) const;
+    truffle::gui::Button action_button(Action action) const;
     // Applies `action` to the selection; false (and a status message) if
     // the selection does not suit it or it would over-constrain.
     bool apply(Action action);
+    bool can_apply(Action action) const;
     // How constrained the active sketch is.
     const model::SolveResult& status() const noexcept { return status_; }
     // The field showing a dimension constraint's value.
-    truffle::gui::Widget dimension_field(model::ObjectId constraint) const;
+    truffle::gui::TextField dimension_field(model::ObjectId constraint) const;
     bool editing_dimension(const truffle::gui::Context& context) const;
 
     // Window position of a sketch point, and the reverse.
@@ -81,20 +86,31 @@ private:
     void drag_to(model::Vec2 at);
     void submit_dimension(model::ObjectId constraint);
     std::optional<truffle::gui::Point> dimension_anchor(const model::Sketch& sketch,
-                                                        const model::SketchConstraint& c) const;
+                                                        const model::SketchConstraint& c,
+                                                        truffle::gui::Size field_size) const;
     void commit(std::string label, const std::function<void(model::DocumentState&, model::Sketch&)>& draw);
     void cancel();
     void redraw();
     void notify();
     void paint(truffle::gui::ShapeWriter& out, truffle::gui::Size size) const;
     void refresh_tools();
+    struct Request {
+        model::ConstraintKind kind;
+        model::ObjectId a;
+        model::ObjectId b;
+    };
+    std::vector<Request> requests(Action action) const;
 
     WorkspaceServices* services_ = nullptr;
     truffle::gui::ElementId canvas_;
-    std::vector<std::pair<truffle::gui::ElementId, truffle::gui::Widget>> tool_buttons_;
-    std::vector<truffle::gui::Widget> action_buttons_;
+    truffle::gui::Container constraints_;
+    truffle::gui::Container constraint_grid_;
+    std::uint16_t constraint_columns_ = 2;
+    bool visible_ = true;
+    std::vector<std::pair<truffle::gui::Container, truffle::gui::Button>> tool_buttons_;
+    std::vector<truffle::gui::Button> action_buttons_;
     struct Field {
-        truffle::gui::Widget widget;
+        truffle::gui::TextField widget;
         truffle::gui::Point position;
     };
     std::map<model::ObjectId, Field> fields_; // by dimension constraint id
